@@ -4,7 +4,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   try {
-    const upstream = await fetch('https://localhost:7234/api/analyze', {
+    const upstream = await fetch('https://inclusivecodeapi-plan-anbxdbfkaeb8dvfy.brazilsouth-01.azurewebsites.net/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
