@@ -3,8 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
+  // https://inclusivecodeapi-plan-anbxdbfkaeb8dvfy.brazilsouth-01.azurewebsites.net/api/analyze
   try {
-    const upstream = await fetch('https://inclusivecodeapi-plan-anbxdbfkaeb8dvfy.brazilsouth-01.azurewebsites.net/api/analyze', {
+    const upstream = await fetch('http://localhost:5283/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
