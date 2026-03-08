@@ -37,6 +37,8 @@ export default function App() {
       console.log('Retorno da API:', data);
 
       const readme = data?.readme_Preview ?? '';
+      sessionStorage.setItem('analysis_result', JSON.stringify(data));
+      sessionStorage.setItem('repo_url', repoUrl);
       sessionStorage.setItem('readme_Preview', readme);
       router.push('/analysis');
     } catch (error: any) {
