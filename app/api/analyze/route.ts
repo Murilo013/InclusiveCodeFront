@@ -13,14 +13,14 @@ async function tryFetch(url: string, body: any) {
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
-  const envUrl = process.env.UPSTREAM_ANALYZE_URL;
-  const candidates = [envUrl, 'https://localhost:5283/api/analyze', 'http://localhost:5283/api/analyze'].filter(Boolean) as string[];
+  try {
+    const upstream = await fetch('https://localhost:7234/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-  let lastError: any = null;
-
-  for (const url of candidates) {
-    try {
-      const { res: upstream, raw } = await tryFetch(url, body);
+    const raw = await upstream.text();
 
       if (!raw) {
         return NextResponse.json({ error: 'Empty response from upstream', attempted: url }, { status: 502 });
