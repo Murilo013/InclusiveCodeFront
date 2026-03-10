@@ -169,7 +169,7 @@ export default function AnalysisPage() {
                 Status: {status ?? "unknown"}
               </span>
               <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded font-mono uppercase tracking-wider">
-                Falhas Encontradas: {analysis.non_conforming_count ?? analysis.issues?.length ?? 0}
+                Falhas Encontradas: {analysis.issues?.length ?? 0}
               </span>
             </div>
 
