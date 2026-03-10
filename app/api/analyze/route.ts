@@ -13,14 +13,21 @@ async function tryFetch(url: string, body: any) {
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
-  try {
-    const upstream = await fetch('https://localhost:7234/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+  const envUrl = process.env.UPSTREAM_ANALYZE_URL;
+  const candidates = [envUrl].filter(Boolean) as string[];
 
-    const raw = await upstream.text();
+  if (candidates.length === 0) {
+    return NextResponse.json(
+      { error: 'UPSTREAM_ANALYZE_URL is not configured' },
+      { status: 500 },
+    );
+  }
+
+  let lastError: any = null;
+
+  for (const url of candidates) {
+    try {
+      const { res: upstream, raw } = await tryFetch(url, body);
 
       if (!raw) {
         return NextResponse.json({ error: 'Empty response from upstream', attempted: url }, { status: 502 });
