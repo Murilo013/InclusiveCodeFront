@@ -13,8 +13,13 @@ async function tryFetch(url: string, body: any) {
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
+  // https://inclusivecodeapi-plan-anbxdbfkaeb8dvfy.brazilsouth-01.azurewebsites.net/api/analyze
   try {
+<<<<<<< HEAD
     const upstream = await fetch('https://localhost:7234/api/analyze', {
+=======
+    const upstream = await fetch('http://localhost:5283/api/analyze', {
+>>>>>>> origin/dev
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
