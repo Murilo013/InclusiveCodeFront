@@ -54,9 +54,9 @@ export default function App() {
       <div className="w-full max-w-4xl flex flex-col items-center text-center space-y-12">
         <div className="space-y-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-4">
-            <Zap className="w-3 h-3" /> AI-Powered Accessibility Engine
+            <Zap className="w-3 h-3" /> AI-Powered Accessibility Engine - FASE DE TESTE
           </div>
-
+          
           <h2 className="text-5xl sm:text-7xl font-extrabold tracking-tighter text-white">
             Escaneie. Audite.{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
