@@ -4,10 +4,40 @@ import { useRouter } from 'next/navigation';
 import { Github, ArrowRight, Shield, Zap, Globe } from 'lucide-react';
 import Layout from './components/Layout';
 
+const PROGRESS_STEPS = [
+  'Validando URL do repositório',
+  'Coletando estrutura de arquivos',
+  'Executando varredura de acessibilidade',
+  'Gerando recomendações de melhoria',
+  'Finalizando relatório para exibição',
+];
+
 export default function App() {
   const [repoUrl, setRepoUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [activeStep, setActiveStep] = useState(0);
   const router = useRouter();
+
+  React.useEffect(() => {
+    if (!isLoading) {
+      setActiveStep(0);
+      return;
+    }
+
+    setActiveStep(0);
+
+    const intervalId = setInterval(() => {
+      setActiveStep((prev) => {
+        if (prev >= PROGRESS_STEPS.length - 1) {
+          return prev;
+        }
+
+        return prev + 1;
+      });
+    }, 1200);
+
+    return () => clearInterval(intervalId);
+  }, [isLoading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,6 +79,60 @@ export default function App() {
 
   return (
     <Layout>
+      {isLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-live="polite"
+            className="w-full max-w-xl rounded-2xl border border-cyan-400/20 bg-slate-900/95 p-6 shadow-[0_0_80px_rgba(6,182,212,0.15)]"
+          >
+            <div className="flex items-center gap-3 text-cyan-300">
+              <span className="inline-block w-6 h-6 border-2 border-cyan-400/30 border-t-cyan-300 rounded-full animate-spin" />
+              <h3 className="text-lg font-bold">Analisando repositório</h3>
+            </div>
+
+            <p className="mt-2 text-sm text-slate-300">
+              Estamos processando sua análise. Isso pode levar alguns segundos.
+            </p>
+
+            <div className="mt-5 space-y-3">
+              {PROGRESS_STEPS.map((step, index) => {
+                const isDone = index < activeStep;
+                const isCurrent = index === activeStep;
+
+                return (
+                  <div
+                    key={step}
+                    className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2"
+                  >
+                    {isDone ? (
+                      <span className="text-emerald-300 text-sm">✓</span>
+                    ) : isCurrent ? (
+                      <span className="inline-block w-4 h-4 border-2 border-cyan-400/30 border-t-cyan-300 rounded-full animate-spin" />
+                    ) : (
+                      <span className="inline-block w-4 h-4 rounded-full border border-slate-500/50" />
+                    )}
+
+                    <span
+                      className={`text-sm ${
+                        isDone
+                          ? 'text-emerald-300'
+                          : isCurrent
+                          ? 'text-cyan-200'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      {step}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-4xl flex flex-col items-center text-center space-y-12">
         <div className="space-y-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-4">
@@ -87,7 +171,7 @@ export default function App() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="absolute right-2 top-2 bottom-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white px-8 rounded-xl font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.3)] active:scale-95"
+                className="cursor-pointer absolute right-2 top-2 bottom-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white px-8 rounded-xl font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.3)] active:scale-95"
               >
                 {isLoading ? (
                   <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
