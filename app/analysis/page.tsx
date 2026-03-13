@@ -1,9 +1,4 @@
 ﻿"use client";
-<<<<<<< Updated upstream
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Layout from '../components/Layout';
-=======
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -247,17 +242,11 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
     },
   };
 }
->>>>>>> Stashed changes
 
 export default function AnalysisPage() {
   const [readme, setReadme] = useState<string | null>(null);
   const router = useRouter();
 
-<<<<<<< Updated upstream
-  useEffect(() => {
-    const value = sessionStorage.getItem('readme_Preview');
-    setReadme(value);
-=======
   const [status, setStatus] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -343,7 +332,6 @@ export default function AnalysisPage() {
     }
 
     setAnalysis(MOCK_ANALYSIS);
->>>>>>> Stashed changes
   }, []);
 
   return (
@@ -361,14 +349,6 @@ export default function AnalysisPage() {
           <p className="text-slate-500">Nenhum resultado encontrado. Volte e analise um repositorio.</p>
         )}
 
-<<<<<<< Updated upstream
-        <button
-          onClick={() => router.push('/')}
-          className="mt-8 px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold transition-all"
-        >
-          Nova Analise
-        </button>
-=======
         {error && (
           <p className="text-red-400">
             {error}
@@ -496,7 +476,6 @@ export default function AnalysisPage() {
 
         </div>
 
->>>>>>> Stashed changes
       </div>
     </Layout>
   );
