@@ -43,6 +43,10 @@ export default function App() {
     e.preventDefault();
     if (!repoUrl) return;
     setIsLoading(true);
+    // mark analysis as running so AnalysisPage can keep showing a loader until completion
+    try {
+      sessionStorage.setItem('analysis_running', '1');
+    } catch {}
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
@@ -68,6 +72,11 @@ export default function App() {
 
       const readme = data?.readme_Preview ?? '';
       sessionStorage.setItem('readme_Preview', readme);
+      // Persist repo URL and full analysis result so AnalysisPage can display immediately
+      sessionStorage.setItem('repo_url', repoUrl);
+      try {
+        sessionStorage.setItem('analysis_result', JSON.stringify(data));
+      } catch {}
       router.push('/analysis');
     } catch (error: any) {
       console.error('Erro ao analisar:', error);

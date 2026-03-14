@@ -30,62 +30,7 @@ type InclusivityStatus = {
   score: number;
 };
 
-const MOCK_ANALYSIS: AnalysisResult = {
-  summary:
-    "Mock de teste visual: falhas agrupadas por arquivo para validar bandejas colapsáveis.",
-  non_conforming_count: 7,
-  issues: [
-    {
-      filename: "index.html",
-      line: 12,
-      snippet: '<img src="banner.png">',
-      issue: "Imagem sem texto alternativo (atributo alt ausente).",
-      improvement: '<img src="banner.png" alt="Banner principal da pagina">',
-    },
-    {
-      filename: "index.html",
-      line: 35,
-      snippet: "<button style=\"outline: none\">Enviar</button>",
-      issue: "Botao sem indicador visivel de foco para navegacao por teclado.",
-      improvement: "<button class=\"btn-primary\">Enviar</button>\n\n.btn-primary:focus-visible {\n  outline: 2px solid #22d3ee;\n  outline-offset: 2px;\n}",
-    },
-    {
-      filename: "index.html",
-      line: 57,
-      snippet: '<a href="#" onclick="openModal()">Saiba mais</a>',
-      issue: "Link com href invalido e acao dependente de JavaScript sem fallback.",
-      improvement: '<button type="button" onclick="openModal()">Saiba mais</button>',
-    },
-    {
-      filename: "page2.html",
-      line: 9,
-      snippet: "<h4>Titulo principal</h4>",
-      issue: "Hierarquia de titulos comeca em h4 e prejudica leitores de tela.",
-      improvement: "<h1>Titulo principal</h1>",
-    },
-    {
-      filename: "page2.html",
-      line: 22,
-      snippet: '<label></label><input type="email" id="email">',
-      issue: "Campo de formulario sem rotulo associado corretamente.",
-      improvement: '<label for="email">E-mail</label>\n<input type="email" id="email" name="email">',
-    },
-    {
-      filename: "components/card.html",
-      line: 14,
-      snippet: "<p style=\"color:#9aa3ad\">Descricao curta</p>",
-      issue: "Contraste de cor insuficiente entre texto e fundo.",
-      improvement: "<p class=\"text-readable\">Descricao curta</p>\n\n.text-readable { color: #e2e8f0; }",
-    },
-    {
-      filename: "components/card.html",
-      line: 41,
-      snippet: "<div role=\"button\" onclick=\"toggle()\">Abrir</div>",
-      issue: "Elemento interativo nao nativo sem suporte completo a teclado.",
-      improvement: '<button type="button" onclick="toggle()">Abrir</button>',
-    },
-  ],
-};
+/* Removed MOCK_ANALYSIS: always call API (no cache) */
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -252,6 +197,8 @@ export default function AnalysisPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const runningFlag = typeof window !== 'undefined' ? sessionStorage.getItem('analysis_running') : null;
+
   const groupedIssues = useMemo(() => {
     const issues = analysis?.issues ?? [];
     const groups = new Map<string, Issue[]>();
@@ -306,6 +253,11 @@ export default function AnalysisPage() {
       setError(err instanceof Error ? err.message : "Erro inesperado");
     }
 
+    // clear running flag so any loaders stop
+    try {
+      sessionStorage.removeItem('analysis_running');
+    } catch {}
+
     setLoading(false);
   }
 
@@ -317,26 +269,44 @@ export default function AnalysisPage() {
         if (normalized.analysis) {
           setStatus(normalized.status ?? "cached");
           setAnalysis(normalized.analysis);
+          // remove running flag if present
+          try { sessionStorage.removeItem('analysis_running'); } catch {}
+          setLoading(false);
           return;
         }
       } catch {
-        // If cached data is invalid, keep fallback flow below.
+        // invalid cached data -> fall through to fetch
       }
     }
 
     const repoUrl = sessionStorage.getItem("repo_url");
-
     if (repoUrl) {
       fetchAnalysis(repoUrl);
-      return;
+    } else {
+      setReadme(null);
     }
-
-    setAnalysis(MOCK_ANALYSIS);
   }, []);
 
   return (
     <Layout>
-      <div className="w-full max-w-3xl bg-slate-900 border border-white/10 rounded-2xl p-8">
+      <div className="w-full max-w-5xl bg-slate-900 border border-white/10 rounded-2xl p-8">
+        {(loading || (typeof window !== 'undefined' && sessionStorage.getItem('analysis_running'))) && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm px-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-live="polite"
+              className="w-full max-w-xl rounded-2xl border border-cyan-400/20 bg-slate-900/95 p-6 shadow-[0_0_80px_rgba(6,182,212,0.15)]"
+            >
+              <div className="flex items-center gap-3 text-cyan-300">
+                <span className="inline-block w-6 h-6 border-2 border-cyan-400/30 border-t-cyan-300 rounded-full animate-spin" />
+                <h3 className="text-lg font-bold">Analisando repositório</h3>
+              </div>
+
+              <p className="mt-2 text-sm text-slate-300">Aguarde enquanto a análise é finalizada.</p>
+            </div>
+          </div>
+        )}
         <h1 className="text-2xl font-bold text-white mb-6">Analise do repositorio</h1>
 
         <div className="mb-2 text-sm font-mono text-cyan-400 uppercase tracking-widest">Readme:</div>
@@ -360,13 +330,36 @@ export default function AnalysisPage() {
 
             <div className="flex gap-3 flex-wrap items-center">
 
-              <span
-                className={`text-xs px-2 py-1 rounded font-mono uppercase tracking-wider ${getStatusBadgeClass(
-                  inclusivityStatus.label
-                )}`}
-              >
-                Classificacao: {inclusivityStatus.label} ({inclusivityStatus.score}/100)
-              </span>
+              <div className="relative inline-block group">
+                <span
+                  className={`text-xs px-2 py-1 rounded font-mono uppercase tracking-wider ${getStatusBadgeClass(
+                    inclusivityStatus.label
+                  )}`}
+                  aria-describedby="inclusivity-tooltip"
+                >
+                  Classificacao: {inclusivityStatus.label} ({inclusivityStatus.score}/100)
+                </span>
+
+                <div
+                  id="inclusivity-tooltip"
+                  role="tooltip"
+                  className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 absolute left-1/2 -translate-x-1/2 mt-2 w-150 bg-slate-800 text-sm text-slate-200 p-3 rounded shadow-lg z-50 break-words ml-36"
+                >
+                  A pontuação de acessibilidade é calculada com base nos problemas encontrados no código.
+
+                  <br /><br />
+
+                  Consideramos três fatores principais:
+                  <br />
+                  <strong>1.</strong> Quantidade de falhas a cada 100 linhas de código<br />
+                  <strong>2.</strong> Quantidade média de falhas por arquivo<br />
+                  <strong>3.</strong> Penalidade extra quando existem mais de 2 falhas
+
+                  <br /><br />
+
+                  Quanto mais problemas forem encontrados, maior será a penalidade e menor será a pontuação final.
+                </div>
+              </div>
 
               <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded font-mono uppercase tracking-wider">
                 Falhas Encontradas: {analysis.issues?.length ?? 0}
@@ -423,7 +416,7 @@ export default function AnalysisPage() {
                                 Trecho
                               </div>
 
-                              <pre className="mt-1 bg-black/40 p-3 rounded text-sm text-slate-100 overflow-x-auto">
+                              <pre className="mt-1 bg-black/40 p-3 rounded text-sm text-slate-100 whitespace-pre-wrap break-words">
                                 {issue.snippet}
                               </pre>
                             </div>
@@ -445,7 +438,7 @@ export default function AnalysisPage() {
                                 Melhoria sugerida
                               </div>
 
-                              <pre className="mt-2 bg-black/40 p-3 rounded text-sm text-emerald-100 overflow-x-auto font-mono">
+                              <pre className="mt-2 bg-black/40 p-3 rounded text-sm text-emerald-100 whitespace-pre-wrap break-words font-mono">
                                 {issue.improvement}
                               </pre>
                             </div>
