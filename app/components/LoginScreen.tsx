@@ -115,7 +115,7 @@ export default function LoginScreen() {
   };
 
   const handleGithubLogin = () => {
-    window.location.href = `${UPSTREAM_BASE}/api/auth/github/login`;
+    alert("Funcionalidade de login com GitHub ainda nao implementada. Em desenvolvimento");
   };
 
   const handleRecoverPassword = () => {
