@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { UPSTREAM_BASE } from "../../../lib/upstream";
 
 function parseUpstreamResponse(raw: string) {
   if (!raw) {
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const upstream = await fetch("http://localhost:5283/api/Auth/login", {
+    const upstream = await fetch(`${UPSTREAM_BASE}/api/Auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

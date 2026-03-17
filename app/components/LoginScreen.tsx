@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import PasswordRecoveryModal from "../components/PasswordRecoveryModal";
+import { UPSTREAM_BASE } from "../lib/upstream";
 
 function parseApiResponse(raw: string): Record<string, unknown> {
   if (!raw) {
@@ -114,7 +115,7 @@ export default function LoginScreen() {
   };
 
   const handleGithubLogin = () => {
-    window.location.href = "http://localhost:5283/api/auth/github/login";
+    window.location.href = `${UPSTREAM_BASE}/api/auth/github/login`;
   };
 
   const handleRecoverPassword = () => {

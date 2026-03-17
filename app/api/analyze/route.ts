@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { UPSTREAM_BASE } from '../../lib/upstream';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
-  // https://inclusivecodeapi-plan-anbxdbfkaeb8dvfy.brazilsouth-01.azurewebsites.net/api/analyze
   try {
-    const upstream = await fetch('http://localhost:5283/api/analyze', {
+    const upstream = await fetch(`${UPSTREAM_BASE}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
