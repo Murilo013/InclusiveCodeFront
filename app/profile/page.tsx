@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import PasswordRecoveryModal from "../components/PasswordRecoveryModal";
 import {
   BarChart3,
   ChevronLeft,
@@ -17,6 +18,7 @@ export default function ProfilePage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [showRecoveryNotice, setShowRecoveryNotice] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -53,17 +55,8 @@ export default function ProfilePage() {
 
   return (
     <Layout>
-      {showRecoveryNotice ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md rounded-2xl border border-cyan-400/20 bg-slate-900/95 p-6 text-center shadow-[0_0_80px_rgba(6,182,212,0.15)]">
-            <h3 className="text-lg font-bold text-cyan-300 uppercase tracking-wide">
-              Em construcao
-            </h3>
-            <p className="mt-2 text-sm text-slate-200">
-              Contate o administrador da pagina.
-            </p>
-          </div>
-        </div>
+      {recoveryOpen ? (
+        <PasswordRecoveryModal email={email} onClose={() => setRecoveryOpen(false)} />
       ) : null}
 
       <div className="w-full max-w-5xl space-y-8 pt-2 pb-6">
@@ -120,7 +113,7 @@ export default function ProfilePage() {
                     <span className="font-mono text-slate-400">••••••••••••</span>
                     <button
                       type="button"
-                      onClick={() => setShowRecoveryNotice(true)}
+                      onClick={() => setRecoveryOpen(true)}
                       className="cursor-pointer text-[10px] font-mono text-cyan-500 hover:text-cyan-400 uppercase font-bold transition-colors"
                     >
                       Alterar

@@ -4,6 +4,7 @@ import { Eye, Github, Lock, User } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
+import PasswordRecoveryModal from "../components/PasswordRecoveryModal";
 
 function parseApiResponse(raw: string): Record<string, unknown> {
   if (!raw) {
@@ -23,7 +24,7 @@ export default function LoginScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [showRecoveryNotice, setShowRecoveryNotice] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
 
   useEffect(() => {
     if (!successMessage) {
@@ -38,20 +39,6 @@ export default function LoginScreen() {
       window.clearTimeout(timeoutId);
     };
   }, [successMessage]);
-
-  useEffect(() => {
-    if (!showRecoveryNotice) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setShowRecoveryNotice(false);
-    }, 3000);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [showRecoveryNotice]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -133,22 +120,13 @@ export default function LoginScreen() {
   const handleRecoverPassword = () => {
     setError(null);
     setSuccessMessage(null);
-    setShowRecoveryNotice(true);
+    setRecoveryOpen(true);
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden bg-[#020617]">
-      {showRecoveryNotice ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm px-4">
-          <div className="w-full max-w-md rounded-2xl border border-cyan-400/20 bg-slate-900/95 p-6 text-center shadow-[0_0_80px_rgba(6,182,212,0.15)]">
-            <h3 className="text-lg font-bold text-cyan-300 uppercase tracking-wide">
-              Em construcao
-            </h3>
-            <p className="mt-2 text-sm text-slate-200">
-              Contate o administrador da pagina.
-            </p>
-          </div>
-        </div>
+      {recoveryOpen ? (
+        <PasswordRecoveryModal onClose={() => setRecoveryOpen(false)} />
       ) : null}
 
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[600px] bg-cyan-600/10 blur-[120px] rounded-full pointer-events-none" />
