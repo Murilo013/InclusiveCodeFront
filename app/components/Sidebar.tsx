@@ -1,6 +1,7 @@
 "use client";
 import React from 'react';
 import { X, User, Bell, BookOpenText } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface SidebarProps {
   open: boolean;
@@ -8,6 +9,28 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
+  const router = useRouter();
+
+  const goTo = (path: string) => {
+    onClose();
+    router.push(path);
+  };
+
+  const handleLogout = () => {
+    try {
+      sessionStorage.removeItem("auth_user");
+      sessionStorage.removeItem("auth_email");
+      sessionStorage.removeItem("auth_token");
+      sessionStorage.removeItem("analysis_result");
+      sessionStorage.removeItem("analysis_running");
+      sessionStorage.removeItem("repo_url");
+      sessionStorage.removeItem("readme_Preview");
+    } catch {}
+
+    onClose();
+    router.replace("/login");
+  };
+
   return (
     <>
       {/* backdrop */}
@@ -32,11 +55,17 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             <div className="space-y-4">
               <h4 className="text-[10px] font-mono text-slate-600 uppercase tracking-widest px-2">User_Identity</h4>
               <nav className="space-y-2">
-                <button className="w-full flex items-center gap-4 px-4 py-3 rounded-xl bg-white/5 text-slate-300 hover:text-cyan-400 hover:bg-cyan-500/10 border border-white/5 transition-all group">
+                <button
+                  onClick={() => goTo('/profile')}
+                  className="w-full flex items-center gap-4 px-4 py-3 rounded-xl bg-white/5 text-slate-300 hover:text-cyan-400 hover:bg-cyan-500/10 border border-white/5 transition-all group"
+                >
                   <User className="w-5 h-5 text-slate-500 group-hover:text-cyan-400" />
                   <span className="text-sm font-medium">Perfil</span>
                 </button>
-                <button className="w-full flex items-center gap-4 px-4 py-3 rounded-xl bg-white/5 text-slate-300 hover:text-cyan-400 hover:bg-cyan-500/10 border border-white/5 transition-all group">
+                <button
+                  onClick={() => goTo('/analysis')}
+                  className="w-full flex items-center gap-4 px-4 py-3 rounded-xl bg-white/5 text-slate-300 hover:text-cyan-400 hover:bg-cyan-500/10 border border-white/5 transition-all group"
+                >
                   <Bell className="w-5 h-5 text-slate-500 group-hover:text-cyan-400" />
                   <span className="text-sm font-medium">Análises Anteriores</span>
                 </button>
@@ -55,7 +84,10 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           </div>
 
           <div className="p-6 border-t border-white/5 bg-black/20">
-            <button className="w-full py-4 bg-transparent border border-red-500/30 text-red-500 text-xs font-mono uppercase tracking-[0.2em] rounded-xl hover:bg-red-500/10 transition-all">
+            <button
+              onClick={handleLogout}
+              className="w-full py-4 bg-transparent border border-red-500/30 text-red-500 text-xs font-mono uppercase tracking-[0.2em] rounded-xl hover:bg-red-500/10 transition-all"
+            >
               Encerrar Sessão
             </button>
           </div>

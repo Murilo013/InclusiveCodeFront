@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Silhueta de pessoa">
+  <rect width="200" height="200" rx="28" fill="#0f172a"/>
+  <circle cx="100" cy="72" r="34" fill="#334155"/>
+  <path d="M42 172c4-32 25-52 58-52s54 20 58 52" fill="#334155"/>
+  <!-- removed decorative cyan ring -->
+</svg>

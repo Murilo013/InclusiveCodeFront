@@ -10,6 +10,7 @@ type Issue = {
   snippet?: string;
   issue: string;
   improvement?: string;
+  severity?: string;
 };
 
 type AnalysisResult = {
@@ -29,6 +30,8 @@ type InclusivityStatus = {
   label: string;
   score: number;
 };
+
+type SortMode = "severity_desc" | "severity_asc" | "line_desc" | "line_asc";
 
 /* Removed MOCK_ANALYSIS: always call API (no cache) */
 
@@ -103,6 +106,44 @@ function getStatusBadgeClass(label: string) {
   }
 }
 
+function normalizeSeverity(severity?: string) {
+  if (!severity) return "";
+
+  return severity
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function getSeverityBadgeClass(severity?: string) {
+  const normalized = normalizeSeverity(severity);
+
+  if (normalized.includes("CRITICO")) {
+    return "bg-red-500/20 text-red-300";
+  }
+
+  if (normalized.includes("MODERADO")) {
+    return "bg-yellow-500/20 text-yellow-300";
+  }
+
+  if (normalized.includes("BAIXO")) {
+    return "bg-blue-500/20 text-blue-300";
+  }
+
+  return "bg-slate-500/20 text-slate-300";
+}
+
+function getSeverityRank(severity?: string) {
+  const normalized = normalizeSeverity(severity);
+
+  if (normalized.includes("CRITICO")) return 3;
+  if (normalized.includes("MODERADO")) return 2;
+  if (normalized.includes("BAIXO")) return 1;
+
+  return 0;
+}
+
 function normalizeAnalysisResponse(raw: unknown): ApiResponse {
   if (!raw || typeof raw !== "object") {
     return {};
@@ -132,6 +173,40 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
         ),
         line: typeof issueObj.line === "number" ? issueObj.line : null,
         snippet: typeof issueObj.snippet === "string" ? issueObj.snippet : "",
+
+        severity: (() => {
+          const sev =
+            issueObj.severity ??
+            issueObj.grau ??
+            issueObj.level ??
+            issueObj.severity_level ??
+            issueObj.severity_code ??
+            issueObj.severityCode ??
+            issueObj.severityLevel ??
+            issueObj.severityValue;
+
+          if (!sev) return undefined;
+
+          if (typeof sev === "string") return sev.trim();
+
+          if (typeof sev === "number") return String(sev);
+
+          if (typeof sev === "object") {
+            const obj = sev as Record<string, unknown>;
+
+            const possible =
+              obj.value ??
+              obj.name ??
+              obj.label ??
+              obj.severity ??
+              obj.level;
+
+            if (typeof possible === "string") return possible.trim();
+          }
+
+          return undefined;
+        })(),
+
         improvement: String(
           issueObj.improvement ??
           issueObj.fixCode ??
@@ -189,15 +264,14 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
 }
 
 export default function AnalysisPage() {
-  const [readme, setReadme] = useState<string | null>(null);
+  
   const router = useRouter();
 
-  const [status, setStatus] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const runningFlag = typeof window !== 'undefined' ? sessionStorage.getItem('analysis_running') : null;
+  const [apiMessage, setApiMessage] = useState<string | null>(null);
+  const [fileSortOptions, setFileSortOptions] = useState<Record<string, SortMode>>({});
 
   const groupedIssues = useMemo(() => {
     const issues = analysis?.issues ?? [];
@@ -233,6 +307,19 @@ export default function AnalysisPage() {
       });
 
       const rawData: unknown = await res.json();
+
+      // detect API response that reports no web files found
+      if (rawData && typeof rawData === "object") {
+        const asObj = rawData as Record<string, unknown>;
+        const msg = typeof asObj.message === "string" ? asObj.message : "";
+        if (msg.toLowerCase().includes("nenhum arquivo web") || msg.toLowerCase().includes("no web files")) {
+          setApiMessage(msg || "Nenhum arquivo web encontrado");
+          setLoading(false);
+          try { sessionStorage.removeItem('analysis_running'); } catch {}
+          return;
+        }
+      }
+
       const data = normalizeAnalysisResponse(rawData);
 
       console.log("API RESPONSE:", data);
@@ -244,7 +331,6 @@ export default function AnalysisPage() {
       }
 
       if (data.analysis) {
-        setStatus(data.status ?? "success");
         setAnalysis(data.analysis);
       } else {
         setError("Resposta da API fora do formato esperado.");
@@ -262,29 +348,53 @@ export default function AnalysisPage() {
   }
 
   useEffect(() => {
-    const cachedRaw = sessionStorage.getItem("analysis_result");
-    if (cachedRaw) {
-      try {
-        const normalized = normalizeAnalysisResponse(JSON.parse(cachedRaw));
-        if (normalized.analysis) {
-          setStatus(normalized.status ?? "cached");
-          setAnalysis(normalized.analysis);
-          // remove running flag if present
-          try { sessionStorage.removeItem('analysis_running'); } catch {}
-          setLoading(false);
-          return;
-        }
-      } catch {
-        // invalid cached data -> fall through to fetch
+    try {
+      if (!sessionStorage.getItem("auth_user")) {
+        router.replace("/login");
+        return;
       }
+    } catch {
+      router.replace("/login");
+      return;
     }
+  }, [router]);
 
-    const repoUrl = sessionStorage.getItem("repo_url");
-    if (repoUrl) {
-      fetchAnalysis(repoUrl);
-    } else {
-      setReadme(null);
-    }
+  useEffect(() => {
+    const loadAnalysis = async () => {
+
+      const cachedRaw = sessionStorage.getItem("analysis_result");
+      if (cachedRaw) {
+        try {
+          const parsed = JSON.parse(cachedRaw) as Record<string, unknown>;
+          const msg = typeof parsed.message === "string" ? parsed.message : "";
+          if (msg.toLowerCase().includes("nenhum arquivo web") || msg.toLowerCase().includes("no web files")) {
+            setApiMessage(msg || "Nenhum arquivo web encontrado");
+            try { sessionStorage.removeItem('analysis_running'); } catch {}
+            setLoading(false);
+            return;
+          }
+
+          const normalized = normalizeAnalysisResponse(parsed);
+          if (normalized.analysis) {
+            setAnalysis(normalized.analysis);
+            try {
+              sessionStorage.removeItem("analysis_running");
+            } catch {}
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // invalid cached data -> fall through to fetch
+        }
+      }
+
+      const repoUrl = sessionStorage.getItem("repo_url");
+      if (repoUrl) {
+        await fetchAnalysis(repoUrl);
+      }
+    };
+
+    void loadAnalysis();
   }, []);
 
   return (
@@ -309,23 +419,19 @@ export default function AnalysisPage() {
         )}
         <h1 className="text-2xl font-bold text-white mb-6">Analise do repositorio</h1>
 
-        <div className="mb-2 text-sm font-mono text-cyan-400 uppercase tracking-widest">Readme:</div>
-
-        {readme !== null ? (
-          <pre className="whitespace-pre-wrap text-slate-200 text-base leading-relaxed font-mono bg-black/30 rounded-xl p-6">
-            {readme || '(vazio)'}
-          </pre>
+        {apiMessage ? (
+          <div className="py-16 text-center">
+            <p className="text-lg text-slate-300">{apiMessage}</p>
+          </div>
         ) : (
-          <p className="text-slate-500">Nenhum resultado encontrado. Volte e analise um repositorio.</p>
-        )}
+          <>
+            {error && (
+              <p className="text-red-400">
+                {error}
+              </p>
+            )}
 
-        {error && (
-          <p className="text-red-400">
-            {error}
-          </p>
-        )}
-
-        {analysis && (
+            {analysis && (
           <div className="space-y-6">
 
             <div className="flex gap-3 flex-wrap items-center">
@@ -395,7 +501,57 @@ export default function AnalysisPage() {
                     </summary>
 
                     <div className="px-4 pb-4 space-y-4 border-t border-white/10">
-                      {fileIssues.map((issue, index) => (
+                      {(() => {
+                        const sortOption =
+                          fileSortOptions[filename] ??
+                          "severity_desc";
+
+                        const sortedIssues = [...fileIssues].sort((a, b) => {
+                          const severityDiff = getSeverityRank(a.severity) - getSeverityRank(b.severity);
+                          const aLine = typeof a.line === "number" ? a.line : -1;
+                          const bLine = typeof b.line === "number" ? b.line : -1;
+                          const lineDiff = aLine - bLine;
+
+                          if (sortOption === "severity_desc") {
+                            return severityDiff !== 0 ? -severityDiff : lineDiff;
+                          }
+
+                          if (sortOption === "severity_asc") {
+                            return severityDiff !== 0 ? severityDiff : lineDiff;
+                          }
+
+                          if (sortOption === "line_desc") {
+                            return lineDiff !== 0 ? -lineDiff : -severityDiff;
+                          }
+
+                          return lineDiff !== 0 ? lineDiff : -severityDiff;
+                        });
+
+                        return (
+                          <>
+                            <div className="mt-4 flex flex-wrap gap-3">
+                              <label className="text-xs text-slate-300 flex items-center gap-2">
+                                Ordenar por
+                                <select
+                                  className="bg-slate-800 border border-white/10 rounded px-2 py-1 text-slate-100"
+                                  value={sortOption}
+                                  onChange={(event) => {
+                                    const nextSortMode = event.target.value as SortMode;
+                                    setFileSortOptions((previous) => ({
+                                      ...previous,
+                                      [filename]: nextSortMode,
+                                    }));
+                                  }}
+                                >
+                                  <option value="severity_desc">Grau: maior para menor</option>
+                                  <option value="severity_asc">Grau: menor para maior</option>
+                                  <option value="line_desc">Linha: maior para menor</option>
+                                  <option value="line_asc">Linha: menor para maior</option>
+                                </select>
+                              </label>
+                            </div>
+
+                            {sortedIssues.map((issue, index) => (
                         <div
                           key={`${filename}-${index}`}
                           className="p-4 mt-4 bg-black/20 border border-white/10 rounded-lg"
@@ -407,6 +563,13 @@ export default function AnalysisPage() {
 
                             <span className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded">
                               Falha #{index + 1}
+                            </span>
+                            <span
+                              className={`text-xs px-2 py-1 rounded font-mono uppercase tracking-wider ${getSeverityBadgeClass(
+                                issue.severity
+                              )}`}
+                            >
+                              Grau: {issue.severity ?? "-"}
                             </span>
                           </div>
 
@@ -444,7 +607,10 @@ export default function AnalysisPage() {
                             </div>
                           )}
                         </div>
-                      ))}
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
                   </details>
                 ))}
@@ -456,12 +622,14 @@ export default function AnalysisPage() {
               </p>
             )}
           </div>
+            )}
+          </>
         )}
 
         <div className="mt-10">
 
           <button
-            onClick={() => router.push("/")}
+            onClick={() => router.push("/scanner")}
             className="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold transition"
           >
             Nova Análise

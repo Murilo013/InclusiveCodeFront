@@ -7,6 +7,17 @@ interface HeaderProps {
 }
 
 export default function Header({ onMenuClick }: HeaderProps) {
+  const [username, setUsername] = React.useState<string>("");
+
+  React.useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("auth_user") ?? "";
+      setUsername(stored);
+    } catch {
+      setUsername("");
+    }
+  }, []);
+
   return (
     <header className="h-16 bg-slate-950/50 backdrop-blur-md border-b border-white/10 flex items-center justify-between px-4 sm:px-8 relative z-50">
       <div className="flex items-center gap-2">
@@ -19,16 +30,26 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <Eye className="w-6 h-6 text-cyan-400 animate-pulse" />
           <div className="absolute inset-0 bg-cyan-400/20 blur-md rounded-full"></div>
         </div>
-        <span className="tracking-tighter">INCLUSIVE<span className="text-cyan-400">CODE</span></span>
+        <a href="/scanner" className="text-white">
+          <span className="tracking-tighter">INCLUSIVE<span className="text-cyan-400">CODE</span></span>
+        </a>
       </h1>
 
-      <button
-        onClick={onMenuClick}
-        aria-label="Abrir menu"
-        className="p-2 rounded-full bg-white/5 border border-white/10 text-white hover:bg-cyan-500/20 hover:border-cyan-500/50 transition-all duration-300 focus:outline-none"
-      >
-        <Menu className="w-6 h-6" />
-      </button>
+      <div className="flex items-center gap-3">
+        {username ? (
+          <span className="hidden sm:inline-flex items-center px-3 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 text-[10px] font-mono uppercase tracking-widest max-w-[180px] truncate">
+            {username}
+          </span>
+        ) : null}
+
+        <button
+          onClick={onMenuClick}
+          aria-label="Abrir menu"
+          className="p-2 rounded-full bg-white/5 border border-white/10 text-white hover:bg-cyan-500/20 hover:border-cyan-500/50 transition-all duration-300 focus:outline-none"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+      </div>
     </header>
   );
 }

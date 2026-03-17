@@ -20,10 +20,11 @@ export async function POST(req: NextRequest) {
     try {
       const data = JSON.parse(raw);
       return NextResponse.json(data, { status: upstream.status });
-    } catch (err) {
+    } catch {
       return NextResponse.json({ error: 'Upstream returned non-JSON', raw }, { status: 502 });
     }
-  } catch (err: any) {
-    return NextResponse.json({ error: 'Failed to fetch upstream', message: err?.message ?? String(err) }, { status: 502 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: 'Failed to fetch upstream', message }, { status: 502 });
   }
 }
