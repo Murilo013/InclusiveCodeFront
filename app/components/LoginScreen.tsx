@@ -225,7 +225,7 @@ export default function LoginScreen() {
               <p className="text-xs font-mono text-emerald-400 tracking-wide">{successMessage}</p>
             ) : null}
           </form>
-
+          {/*
           <div className="relative my-8 text-center">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-white/5" />
@@ -234,7 +234,7 @@ export default function LoginScreen() {
               Integracao_Externa
             </span>
           </div>
-
+           
           <button
             type="button"
             onClick={handleGithubLogin}
@@ -244,6 +244,7 @@ export default function LoginScreen() {
             <Github className="w-5 h-5" />
             Conectar com GitHub
           </button>
+          */}
         </div>
 
         <p className="mt-8 text-center text-sm text-slate-500">
