@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { UPSTREAM_BASE } from '../../lib/upstream';
+import { UPSTREAM_BASE,DEV_URL } from '../../lib/upstream';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
   try {
-    const upstream = await fetch(`${UPSTREAM_BASE}/api/analyze`, {
+    const upstream = await fetch(`${DEV_URL}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

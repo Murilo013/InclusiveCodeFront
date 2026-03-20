@@ -18,6 +18,7 @@ export default function ScannerHome() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isApiErrorHiding, setIsApiErrorHiding] = useState(false);
   const router = useRouter();
 
   React.useEffect(() => {
@@ -62,6 +63,29 @@ export default function ScannerHome() {
 
     return () => clearInterval(intervalId);
   }, [isLoading]);
+
+  React.useEffect(() => {
+    if (!apiError) {
+      setIsApiErrorHiding(false);
+      return;
+    }
+
+    setIsApiErrorHiding(false);
+
+    const hideTimeoutId = setTimeout(() => {
+      setIsApiErrorHiding(true);
+    }, 4500);
+
+    const removeTimeoutId = setTimeout(() => {
+      setApiError(null);
+      setIsApiErrorHiding(false);
+    }, 5000);
+
+    return () => {
+      clearTimeout(hideTimeoutId);
+      clearTimeout(removeTimeoutId);
+    };
+  }, [apiError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +133,7 @@ export default function ScannerHome() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("Erro ao analisar:", error);
+      setIsApiErrorHiding(false);
       setApiError(message);
       try {
         sessionStorage.removeItem("analysis_running");
@@ -120,6 +145,17 @@ export default function ScannerHome() {
 
   return (
     <Layout>
+      {apiError && (
+        <div
+          className={`fixed top-20 z-[70] rounded-lg border border-rose-400/50 bg-rose-700 text-white px-4 py-3 text-center shadow-lg transition-all duration-500 ${
+            isApiErrorHiding ? "opacity-0 -translate-y-2" : "opacity-100 translate-y-0"
+          }`}
+        >
+          <div className="text-sm font-semibold">Erro na analise</div>
+          <p className="mt-1 text-sm text-rose-100 break-words">{apiError.slice(17)}</p>
+        </div>
+      )}
+
       {isLoading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm px-4">
           <div
@@ -231,30 +267,6 @@ export default function ScannerHome() {
             <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> Secure Auth</span>
           </div>
         </form>
-
-        {apiError && (
-          <div className="w-full max-w-2xl mt-6 bg-rose-900/10 border border-rose-600/20 rounded-xl p-4 text-left">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-sm font-bold text-rose-300">Erro na análise</h3>
-                <p className="mt-2 text-xs text-rose-200">{apiError}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    try { sessionStorage.removeItem('analysis_running'); } catch {}
-                    setApiError(null);
-                    setActiveStep(0);
-                    setIsLoading(false);
-                  }}
-                  className="px-4 py-2 bg-cyan-600 text-white rounded-lg text-sm font-mono"
-                >
-                  Voltar ao Scanner
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </Layout>
   );

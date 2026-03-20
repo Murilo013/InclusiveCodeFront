@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Layout from "../components/Layout";
 
@@ -11,6 +11,7 @@ type Issue = {
   issue: string;
   improvement?: string;
   severity?: string;
+  evidence_urls?: string[];
 };
 
 type AnalysisResult = {
@@ -24,6 +25,7 @@ type ApiResponse = {
   status?: string;
   analysis?: AnalysisResult;
   error?: string;
+  message?: string;
 };
 
 type InclusivityStatus = {
@@ -219,6 +221,18 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
             issueObj.recommendation ??
             ""
         ),
+        evidence_urls: (() => {
+          const rawEvidence = issueObj.evidence_urls ?? issueObj.evidenceUrls;
+
+          if (!Array.isArray(rawEvidence)) {
+            return [];
+          }
+
+          return rawEvidence
+            .filter((value) => typeof value === "string")
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0);
+        })(),
         issue: String(
           issueObj.issue ??
             issueObj.description ??
@@ -245,6 +259,7 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
   return {
     status: typeof data.status === "string" ? data.status : undefined,
     error: typeof data.error === "string" ? data.error : undefined,
+    message: typeof data.message === "string" ? data.message : undefined,
     analysis: {
       summary:
         typeof summaryCandidate === "string"
@@ -266,12 +281,26 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
 export default function AnalysisPage() {
   
   const router = useRouter();
+  const popupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [apiMessage, setApiMessage] = useState<string | null>(null);
+  const [errorPopupMessage, setErrorPopupMessage] = useState<string | null>(null);
   const [fileSortOptions, setFileSortOptions] = useState<Record<string, SortMode>>({});
+
+  function showErrorPopup(message: string) {
+    setErrorPopupMessage(message);
+
+    if (popupTimeoutRef.current) {
+      clearTimeout(popupTimeoutRef.current);
+    }
+
+    popupTimeoutRef.current = setTimeout(() => {
+      setErrorPopupMessage(null);
+      popupTimeoutRef.current = null;
+    }, 5000);
+  }
 
   const groupedIssues = useMemo(() => {
     const issues = analysis?.issues ?? [];
@@ -295,7 +324,7 @@ export default function AnalysisPage() {
 
   async function fetchAnalysis(url: string) {
     setLoading(true);
-    setError(null);
+    setErrorPopupMessage(null);
 
     try {
       const res = await fetch("/api/analyze", {
@@ -322,10 +351,17 @@ export default function AnalysisPage() {
 
       const data = normalizeAnalysisResponse(rawData);
 
+      if (data.status?.toLowerCase() === "error" && data.message) {
+        showErrorPopup(data.message);
+        setLoading(false);
+        try { sessionStorage.removeItem('analysis_running'); } catch {}
+        return;
+      }
+
       console.log("API RESPONSE:", data);
 
       if (!res.ok) {
-        setError(data?.error || "Erro ao executar análise");
+        showErrorPopup(data?.error || data?.message || "Erro ao executar analise");
         setLoading(false);
         return;
       }
@@ -333,10 +369,10 @@ export default function AnalysisPage() {
       if (data.analysis) {
         setAnalysis(data.analysis);
       } else {
-        setError("Resposta da API fora do formato esperado.");
+        showErrorPopup("Resposta da API fora do formato esperado.");
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erro inesperado");
+      showErrorPopup(err instanceof Error ? err.message : "Erro inesperado");
     }
 
     // clear running flag so any loaders stop
@@ -346,6 +382,14 @@ export default function AnalysisPage() {
 
     setLoading(false);
   }
+
+  useEffect(() => {
+    return () => {
+      if (popupTimeoutRef.current) {
+        clearTimeout(popupTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -375,6 +419,13 @@ export default function AnalysisPage() {
           }
 
           const normalized = normalizeAnalysisResponse(parsed);
+          if (normalized.status?.toLowerCase() === "error" && normalized.message) {
+            showErrorPopup(normalized.message);
+            try { sessionStorage.removeItem('analysis_running'); } catch {}
+            setLoading(false);
+            return;
+          }
+
           if (normalized.analysis) {
             setAnalysis(normalized.analysis);
             try {
@@ -400,6 +451,13 @@ export default function AnalysisPage() {
   return (
     <Layout>
       <div className="w-full max-w-5xl bg-slate-900 border border-white/10 rounded-2xl p-8">
+        {errorPopupMessage && (
+          <div className="fixed top-5 right-5 z-[70] max-w-md rounded-lg border border-red-300/50 bg-red-600 text-white px-4 py-3 shadow-lg">
+            <div className="text-sm font-semibold">Erro de analise</div>
+            <p className="mt-1 text-sm text-red-100">{errorPopupMessage}</p>
+          </div>
+        )}
+
         {(loading || (typeof window !== 'undefined' && sessionStorage.getItem('analysis_running'))) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm px-4">
             <div
@@ -425,12 +483,6 @@ export default function AnalysisPage() {
           </div>
         ) : (
           <>
-            {error && (
-              <p className="text-red-400">
-                {error}
-              </p>
-            )}
-
             {analysis && (
           <div className="space-y-6">
 
@@ -604,6 +656,29 @@ export default function AnalysisPage() {
                               <pre className="mt-2 bg-black/40 p-3 rounded text-sm text-emerald-100 whitespace-pre-wrap break-words font-mono">
                                 {issue.improvement}
                               </pre>
+                            </div>
+                          )}
+
+                          {issue.evidence_urls && issue.evidence_urls.length > 0 && (
+                            <div className="mt-3 p-3 rounded border border-cyan-400/20 bg-cyan-500/10">
+                              <div className="text-xs text-cyan-300 font-mono uppercase tracking-wide">
+                                Referencias
+                              </div>
+
+                              <ul className="mt-2 space-y-2">
+                                {issue.evidence_urls.map((url, urlIndex) => (
+                                  <li key={`${filename}-${index}-evidence-${urlIndex}`}>
+                                    <a
+                                      href={url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-sm text-cyan-200 hover:text-cyan-100 underline break-all"
+                                    >
+                                      {url}
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
                           )}
                         </div>
