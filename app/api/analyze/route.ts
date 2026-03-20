@@ -1,16 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { UPSTREAM_BASE,DEV_URL } from '../../lib/upstream';
 
-async function tryFetch(url: string, body: any) {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const raw = await res.text();
-  return { res, raw };
-}
-
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
@@ -21,16 +11,12 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify(body),
     });
 
-  if (candidates.length === 0) {
-    return NextResponse.json(
-      { error: 'UPSTREAM_ANALYZE_URL is not configured' },
-      { status: 500 },
-    );
-  }
+    const raw = await upstream.text();
 
-  let lastError: any = null;
+    if (!raw) {
+      return NextResponse.json({ error: 'Empty response from upstream' }, { status: 502 });
+    }
 
-  for (const url of candidates) {
     try {
       const data = JSON.parse(raw);
       return NextResponse.json(data, { status: upstream.status });
@@ -41,6 +27,4 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: 'Failed to fetch upstream', message }, { status: 502 });
   }
-
-  return NextResponse.json({ error: 'Failed to fetch upstream', lastError, attempted: candidates }, { status: 502 });
 }
