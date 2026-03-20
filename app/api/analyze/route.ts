@@ -5,7 +5,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   try {
-    const upstream = await fetch(`${DEV_URL}/api/analyze`, {
+    const upstream = await fetch(${DEV_URL}/api/analyze, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

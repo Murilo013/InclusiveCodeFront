@@ -115,10 +115,6 @@ export default function LoginScreen() {
     }
   };
 
-<<<<<<< Updated upstream
-  const handleGithubLogin = () => {
-    window.location.href = `${UPSTREAM_BASE}/api/auth/github/login`;
-=======
   const handleGithubLogin = async () => {
     try {
       const { auth } = await import("../../lib/firebase");
@@ -139,7 +135,6 @@ export default function LoginScreen() {
       console.log('erro', error);
       setError("Falha no login com GitHub. Tente novamente.");
     }
->>>>>>> Stashed changes
   };
 
   const handleRecoverPassword = () => {
@@ -258,7 +253,7 @@ export default function LoginScreen() {
               Integracao_Externa
             </span>
           </div>
-
+           
           <button
             type="button"
             onClick={handleGithubLogin}
