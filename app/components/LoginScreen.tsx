@@ -126,7 +126,15 @@ export default function LoginScreen() {
       console.log('token', credential?.accessToken);
 
       const additionalUserInfo = getAdditionalUserInfo(result);
-      const githubUsername = additionalUserInfo?.profile?.login || result.user.displayName || "GitHub User";
+      const profileLogin =
+        additionalUserInfo?.profile && typeof additionalUserInfo.profile === "object"
+          ? (additionalUserInfo.profile as Record<string, unknown>).login
+          : undefined;
+
+      const githubUsername =
+        typeof profileLogin === "string" && profileLogin.trim().length > 0
+          ? profileLogin
+          : result.user.displayName || "GitHub User";
       sessionStorage.setItem("auth_user", githubUsername);
       sessionStorage.setItem("auth_email", result.user.email || "");
 

@@ -5,7 +5,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   try {
-    const upstream = await fetch(${DEV_URL}/api/analyze, {
+    const upstream = await fetch(`${DEV_URL}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -21,10 +21,11 @@ export async function POST(req: NextRequest) {
       const data = JSON.parse(raw);
       return NextResponse.json(data, { status: upstream.status });
     } catch {
-      return NextResponse.json({ error: 'Upstream returned non-JSON', raw }, { status: 502 });
+      // Upstream returned non-JSON, forward raw message with upstream status
+      return NextResponse.json({ message: raw }, { status: upstream.status });
     }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: 'Failed to fetch upstream', message }, { status: 502 });
+    return NextResponse.json({ message: 'Failed to connect to upstream', detail: message }, { status: 502 });
   }
 }
