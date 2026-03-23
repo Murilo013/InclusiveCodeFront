@@ -285,6 +285,9 @@ export default function AnalysisPage() {
 
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isCreatingPullRequest, setIsCreatingPullRequest] = useState(false);
+  const [pullRequestMessage, setPullRequestMessage] = useState<string | null>(null);
+  const [pullRequestUrl, setPullRequestUrl] = useState<string | null>(null);
   const [apiMessage, setApiMessage] = useState<string | null>(null);
   const [errorPopupMessage, setErrorPopupMessage] = useState<string | null>(null);
   const [fileSortOptions, setFileSortOptions] = useState<Record<string, SortMode>>({});
@@ -381,6 +384,71 @@ export default function AnalysisPage() {
     } catch {}
 
     setLoading(false);
+  }
+
+  async function handleCreatePullRequest() {
+    if (!analysis || !analysis.issues || analysis.issues.length === 0) {
+      showErrorPopup("Nao ha falhas com melhoria sugerida para abrir Pull Request.");
+      return;
+    }
+
+    const issuesWithImprovement = analysis.issues.filter(
+      (item) => item.improvement && item.improvement.trim().length > 0
+    );
+
+    if (issuesWithImprovement.length === 0) {
+      showErrorPopup("Nao ha melhorias sugeridas para aplicar automaticamente.");
+      return;
+    }
+
+    const repoUrl = sessionStorage.getItem("repo_url") ?? "";
+    const githubAccessToken = sessionStorage.getItem("github_access_token") ?? "";
+
+    if (!repoUrl) {
+      showErrorPopup("URL do repositorio nao encontrada. Execute uma nova analise.");
+      return;
+    }
+
+    if (!githubAccessToken) {
+      showErrorPopup("Sua sessao GitHub expirou. Faca login com GitHub novamente.");
+      return;
+    }
+
+    setIsCreatingPullRequest(true);
+    setPullRequestMessage(null);
+    setPullRequestUrl(null);
+
+    try {
+      const response = await fetch("/api/github/pull-request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${githubAccessToken}`,
+        },
+        body: JSON.stringify({
+          repoUrl,
+          title: `chore(a11y): aplicar correcoes sugeridas (${new Date().toISOString().slice(0, 10)})`,
+          issues: issuesWithImprovement,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        message?: string;
+        pullRequestUrl?: string;
+      };
+
+      if (!response.ok) {
+        showErrorPopup(data.message || "Nao foi possivel criar o Pull Request.");
+        return;
+      }
+
+      setPullRequestMessage(data.message || "Pull Request criado com sucesso.");
+      setPullRequestUrl(data.pullRequestUrl ?? null);
+    } catch (error: unknown) {
+      showErrorPopup(error instanceof Error ? error.message : "Erro ao criar Pull Request.");
+    } finally {
+      setIsCreatingPullRequest(false);
+    }
   }
 
   useEffect(() => {
@@ -702,6 +770,32 @@ export default function AnalysisPage() {
         )}
 
         <div className="mt-10">
+          {analysis && analysis.issues && analysis.issues.length > 0 ? (
+            <div className="mb-4 space-y-3">
+              <button
+                onClick={handleCreatePullRequest}
+                disabled={isCreatingPullRequest || loading}
+                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white rounded-xl font-bold transition"
+              >
+                {isCreatingPullRequest ? "Criando Pull Request..." : "Aplicar melhorias e abrir Pull Request"}
+              </button>
+
+              {pullRequestMessage ? (
+                <p className="text-sm text-emerald-300">{pullRequestMessage}</p>
+              ) : null}
+
+              {pullRequestUrl ? (
+                <a
+                  href={pullRequestUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex text-sm text-cyan-300 underline hover:text-cyan-200"
+                >
+                  Abrir Pull Request no GitHub
+                </a>
+              ) : null}
+            </div>
+          ) : null}
 
           <button
             onClick={() => router.push("/scanner")}

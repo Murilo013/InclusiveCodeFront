@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import PasswordRecoveryModal from "../components/PasswordRecoveryModal";
-import { UPSTREAM_BASE } from "../lib/upstream";
 import { signInWithPopup, GithubAuthProvider, getAdditionalUserInfo } from "firebase/auth";
 
 function parseApiResponse(raw: string): Record<string, unknown> {
@@ -119,6 +118,8 @@ export default function LoginScreen() {
     try {
       const { auth } = await import("../../lib/firebase");
       const provider = new GithubAuthProvider();
+      provider.addScope("repo");
+      provider.addScope("read:user");
       const result = await signInWithPopup(auth, provider);
       console.log('usuario', result.user);
 
@@ -137,6 +138,9 @@ export default function LoginScreen() {
           : result.user.displayName || "GitHub User";
       sessionStorage.setItem("auth_user", githubUsername);
       sessionStorage.setItem("auth_email", result.user.email || "");
+      if (credential?.accessToken) {
+        sessionStorage.setItem("github_access_token", credential.accessToken);
+      }
 
       router.push("/scanner");
     } catch (error) {
