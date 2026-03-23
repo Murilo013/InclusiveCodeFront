@@ -21,6 +21,12 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       sessionStorage.removeItem("auth_user");
       sessionStorage.removeItem("auth_email");
       sessionStorage.removeItem("auth_token");
+      sessionStorage.removeItem("auth_user_id");
+      sessionStorage.removeItem("userId");
+      sessionStorage.removeItem("UserId");
+      sessionStorage.removeItem("github_access_token");
+      sessionStorage.removeItem("github_linked_user_id");
+      sessionStorage.removeItem("github_username");
       sessionStorage.removeItem("analysis_result");
       sessionStorage.removeItem("analysis_running");
       sessionStorage.removeItem("repo_url");

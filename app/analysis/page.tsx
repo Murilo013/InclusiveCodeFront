@@ -403,6 +403,8 @@ export default function AnalysisPage() {
 
     const repoUrl = sessionStorage.getItem("repo_url") ?? "";
     const githubAccessToken = sessionStorage.getItem("github_access_token") ?? "";
+    const linkedGithubUserId = sessionStorage.getItem("github_linked_user_id") ?? "";
+    const currentUserId = sessionStorage.getItem("auth_user_id") ?? "";
 
     if (!repoUrl) {
       showErrorPopup("URL do repositorio nao encontrada. Execute uma nova analise.");
@@ -411,6 +413,16 @@ export default function AnalysisPage() {
 
     if (!githubAccessToken) {
       showErrorPopup("Sua sessao GitHub expirou. Faca login com GitHub novamente.");
+      return;
+    }
+
+    if (!currentUserId) {
+      showErrorPopup("Faca login com sua conta normal para criar Pull Request.");
+      return;
+    }
+
+    if (!linkedGithubUserId || linkedGithubUserId !== currentUserId) {
+      showErrorPopup("Conecte sua conta GitHub no perfil para vincular com sua conta atual.");
       return;
     }
 

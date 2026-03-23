@@ -26,8 +26,8 @@ export async function POST(req: NextRequest) {
     });
 
     const raw = await upstream.text();
+    
     const data = parseUpstreamResponse(raw);
-
     return NextResponse.json(data, { status: upstream.status });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

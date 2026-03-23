@@ -67,7 +67,8 @@ export default function LoginScreen() {
       });
 
       const raw = await response.text();
-  const data = parseApiResponse(raw);
+      const data = parseApiResponse(raw);
+      console.log("[InclusiveCode] Resposta do login recebida no frontend:", data);
 
       if (!response.ok) {
         const message =
@@ -97,9 +98,25 @@ export default function LoginScreen() {
           ? data.username
           : email;
 
+      // Extrair UserId
+      const resolvedUserId =
+        typeof data.UserId === "number" && data.UserId > 0
+          ? String(data.UserId)
+          : typeof data.userId === "number" && data.userId > 0
+            ? String(data.userId)
+            : typeof data.id === "number" && data.id > 0
+              ? String(data.id)
+              : null;
+
+
       try {
         sessionStorage.setItem("auth_user", resolvedUsername);
         sessionStorage.setItem("auth_email", email);
+        if (resolvedUserId) {
+          sessionStorage.setItem("auth_user_id", resolvedUserId);
+          sessionStorage.setItem("userId", resolvedUserId);
+          sessionStorage.setItem("UserId", resolvedUserId);
+        }
       } catch {}
 
       router.push("/scanner");

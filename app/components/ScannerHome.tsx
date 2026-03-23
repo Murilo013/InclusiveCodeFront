@@ -97,10 +97,12 @@ export default function ScannerHome() {
     } catch {}
 
     try {
+      const userId = sessionStorage.getItem("auth_user_id");
+
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: repoUrl }),
+        body: JSON.stringify({ url: repoUrl, id: userId }),
       });
       const raw = await res.text();
       let data: Record<string, unknown> = {};
