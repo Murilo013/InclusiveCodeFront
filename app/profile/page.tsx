@@ -158,6 +158,7 @@ export default function ProfilePage() {
   const [isLoadingAnalyses, setIsLoadingAnalyses] = useState(false);
   const [isLinkingGithub, setIsLinkingGithub] = useState(false);
   const [isGithubLinked, setIsGithubLinked] = useState(false);
+  const [isDirectGithubLogin, setIsDirectGithubLogin] = useState(false);
   const [githubUsername, setGithubUsername] = useState("");
   const [githubLinkMessage, setGithubLinkMessage] = useState<string | null>(null);
 
@@ -356,6 +357,8 @@ export default function ProfilePage() {
         !!githubToken && !!storedUserId && linkedUserId === storedUserId;
       const hasGithubSessionFromDirectLogin = !!githubToken && !storedUserId;
 
+      setIsDirectGithubLogin(hasGithubSessionFromDirectLogin);
+
       if (hasLinkedGithubForCurrentUser || hasGithubSessionFromDirectLogin) {
         setIsGithubLinked(true);
         setGithubUsername(storedGithubUsername || storedUser);
@@ -483,16 +486,25 @@ export default function ProfilePage() {
                   <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest ml-1">
                     Senha_Atual
                   </label>
-                  <div className="flex items-center justify-between bg-slate-900/50 border border-white/5 rounded-xl px-4 py-3">
-                    <span className="font-mono text-slate-400">••••••••••••</span>
-                    <button
-                      type="button"
-                      onClick={() => setRecoveryOpen(true)}
-                      className="cursor-pointer text-[10px] font-mono text-cyan-500 hover:text-cyan-400 uppercase font-bold transition-colors"
-                    >
-                      Alterar
-                    </button>
-                  </div>
+                  {isDirectGithubLogin ? (
+                    <div className="bg-slate-900/50 border border-white/5 rounded-xl px-4 py-3 space-y-2">
+                      <span className="font-mono text-slate-400 block">Nao disponivel</span>
+                      <p className="text-[11px] font-mono text-slate-500">
+                        Voce esta logado com GitHub. A alteracao de senha nao se aplica para este tipo de conta.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between bg-slate-900/50 border border-white/5 rounded-xl px-4 py-3">
+                      <span className="font-mono text-slate-400">••••••••••••</span>
+                      <button
+                        type="button"
+                        onClick={() => setRecoveryOpen(true)}
+                        className="cursor-pointer text-[10px] font-mono text-cyan-500 hover:text-cyan-400 uppercase font-bold transition-colors"
+                      >
+                        Alterar
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
