@@ -19,6 +19,34 @@ function parseApiResponse(raw: string): Record<string, unknown> {
   }
 }
 
+function resolveUserIdFromPayload(data: Record<string, unknown>): string | null {
+  if (typeof data.UserId === "number" && data.UserId > 0) {
+    return String(data.UserId);
+  }
+
+  if (typeof data.userId === "number" && data.userId > 0) {
+    return String(data.userId);
+  }
+
+  if (typeof data.id === "number" && data.id > 0) {
+    return String(data.id);
+  }
+
+  if (typeof data.UserId === "string" && data.UserId.trim().length > 0) {
+    return data.UserId.trim();
+  }
+
+  if (typeof data.userId === "string" && data.userId.trim().length > 0) {
+    return data.userId.trim();
+  }
+
+  if (typeof data.id === "string" && data.id.trim().length > 0) {
+    return data.id.trim();
+  }
+
+  return null;
+}
+
 export default function LoginScreen() {
   const router = useRouter();
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -98,15 +126,7 @@ export default function LoginScreen() {
           ? data.username
           : email;
 
-      // Extrair UserId
-      const resolvedUserId =
-        typeof data.UserId === "number" && data.UserId > 0
-          ? String(data.UserId)
-          : typeof data.userId === "number" && data.userId > 0
-            ? String(data.userId)
-            : typeof data.id === "number" && data.id > 0
-              ? String(data.id)
-              : null;
+      const resolvedUserId = resolveUserIdFromPayload(data);
 
 
       try {
@@ -131,6 +151,56 @@ export default function LoginScreen() {
     }
   };
 
+  const ensureBackendUserForGithub = async (params: {
+    username: string;
+    email: string;
+    providerUid: string;
+  }) => {
+    const { username, email, providerUid } = params;
+
+    if (!email) {
+      return null;
+    }
+
+    const deterministicPassword = `Gh@${providerUid}#InclusiveCode`;
+
+    const tryLogin = async () => {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password: deterministicPassword }),
+      });
+
+      const raw = await response.text();
+      const data = parseApiResponse(raw);
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return resolveUserIdFromPayload(data);
+    };
+
+    const existingUserId = await tryLogin();
+    if (existingUserId) {
+      return existingUserId;
+    }
+
+    const registerResponse = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ username, email, password: deterministicPassword }),
+    });
+
+    await registerResponse.text();
+
+    return tryLogin();
+  };
+
   const handleGithubLogin = async () => {
     try {
       const { auth } = await import("../../lib/firebase");
@@ -153,11 +223,37 @@ export default function LoginScreen() {
         typeof profileLogin === "string" && profileLogin.trim().length > 0
           ? profileLogin
           : result.user.displayName || "GitHub User";
+
+      let resolvedBackendUserId: string | null = null;
+
+      try {
+        resolvedBackendUserId = await ensureBackendUserForGithub({
+          username: githubUsername,
+          email: result.user.email || "",
+          providerUid: result.user.uid,
+        });
+      } catch (provisionError) {
+        console.warn("Falha ao provisionar conta no backend via GitHub:", provisionError);
+      }
+
       sessionStorage.setItem("auth_user", githubUsername);
       sessionStorage.setItem("auth_email", result.user.email || "");
+
+      if (resolvedBackendUserId) {
+        sessionStorage.setItem("auth_user_id", resolvedBackendUserId);
+        sessionStorage.setItem("userId", resolvedBackendUserId);
+        sessionStorage.setItem("UserId", resolvedBackendUserId);
+      }
+
       if (credential?.accessToken) {
         sessionStorage.setItem("github_access_token", credential.accessToken);
+
+        if (resolvedBackendUserId) {
+          sessionStorage.setItem("github_linked_user_id", resolvedBackendUserId);
+        }
       }
+
+      sessionStorage.setItem("github_username", githubUsername);
 
       router.push("/scanner");
     } catch (error) {

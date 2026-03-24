@@ -2,17 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DEV_URL } from '../../lib/upstream';
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  const body = (await req.json()) as Record<string, unknown>;
 
-  // Extract userId from header or body
-  const userId = req.headers.get('x-user-id') || body.id;
+  const headerUserId = req.headers.get('x-user-id');
+  const bodyUserId = body.id;
 
-  if (!userId) {
-    return NextResponse.json({ error: 'User ID required' }, { status: 400 });
+  const normalizedHeaderUserId =
+    headerUserId && headerUserId.trim().length > 0 ? headerUserId.trim() : null;
+  const normalizedBodyUserId =
+    (typeof bodyUserId === 'string' && bodyUserId.trim().length > 0) || typeof bodyUserId === 'number'
+      ? bodyUserId
+      : null;
+
+  const upstreamBody: Record<string, unknown> = { ...body };
+
+  if (normalizedHeaderUserId || normalizedBodyUserId !== null) {
+    upstreamBody.id = normalizedHeaderUserId ?? normalizedBodyUserId;
+  } else {
+    delete upstreamBody.id;
   }
-
-  // Add id to body if not present
-  const upstreamBody = { ...body, id: userId };
 
   try {
     const upstream = await fetch(`${DEV_URL}/api/analyze`, {
