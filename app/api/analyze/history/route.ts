@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DEV_URL } from '../../../lib/upstream';
+import { UPSTREAM_BASE,DEV_URL } from '../../../lib/upstream';
 
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(`${DEV_URL}/api/analyze/history/me?userId=${userId}`, {
+    const upstream = await fetch(`${UPSTREAM_BASE}/api/analyze/history/me?userId=${userId}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
