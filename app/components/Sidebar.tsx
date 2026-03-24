@@ -68,13 +68,6 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                   <User className="w-5 h-5 text-slate-500 group-hover:text-cyan-400" />
                   <span className="text-sm font-medium">Perfil</span>
                 </button>
-                <button
-                  onClick={() => goTo('/analysis')}
-                  className="cursor-pointer w-full flex items-center gap-4 px-4 py-3 rounded-xl bg-white/5 text-slate-300 hover:text-cyan-400 hover:bg-cyan-500/10 border border-white/5 transition-all group"
-                >
-                  <Bell className="w-5 h-5 text-slate-500 group-hover:text-cyan-400" />
-                  <span className="text-sm font-medium">Análises Anteriores</span>
-                </button>
               </nav>
             </div>
 

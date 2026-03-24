@@ -215,18 +215,18 @@ export default function ScannerHome() {
       <div className="w-full max-w-4xl flex flex-col items-center text-center space-y-12">
         <div className="space-y-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-4">
-            <Zap className="w-3 h-3" /> AI-Powered Accessibility Engine
+            <Zap className="w-3 h-3" /> AI Accessibility Engine
           </div>
 
           <h2 className="text-5xl sm:text-7xl font-extrabold tracking-tighter text-white">
-            Escaneie. Audite.{" "}
+            Escaneie. Analise.{" "}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
-              Otimize.
+              Inclua.
             </span>
           </h2>
 
           <p className="text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            Injete inteligencia na sua interface. Nossa engine de varredura profunda identifica falhas de
+            Torne sua aplicação mais acessível. Nossa engine de varredura profunda identifica falhas de
             acessibilidade e gera patches corretivos em tempo real.
           </p>
         </div>

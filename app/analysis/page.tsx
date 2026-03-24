@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Layout from "../components/Layout";
 
 type Issue = {
+  id: string;
   filename: string;
   line?: number | null;
   snippet?: string;
@@ -19,6 +20,8 @@ type AnalysisResult = {
   non_conforming_count?: number;
   issues?: Issue[];
   improvementCode?: string;
+  score?: number;
+  scoreLabel?: string;
 };
 
 type ApiResponse = {
@@ -37,60 +40,18 @@ type SortMode = "severity_desc" | "severity_asc" | "line_desc" | "line_asc";
 
 /* Removed MOCK_ANALYSIS: always call API (no cache) */
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
 function computeInclusivityStatus(analysis: AnalysisResult | null): InclusivityStatus {
-  if (!analysis?.issues || analysis.issues.length === 0) {
+  if (!analysis) {
     return { label: "INCLUSIVO", score: 100 };
   }
 
-  const issues = analysis.issues;
-  const files = new Map<string, { maxLine: number }>();
+  const score = typeof analysis.score === "number" ? analysis.score : 100;
+  const label =
+    typeof analysis.scoreLabel === "string" && analysis.scoreLabel.trim().length > 0
+      ? analysis.scoreLabel.trim().toUpperCase()
+      : "INCLUSIVO";
 
-  issues.forEach((item) => {
-    const filename = item.filename || "arquivo-desconhecido";
-    const current = files.get(filename) ?? { maxLine: 0 };
-    const lineValue = typeof item.line === "number" && item.line > 0 ? item.line : 0;
-    current.maxLine = Math.max(current.maxLine, lineValue);
-    files.set(filename, current);
-  });
-
-  const fileCount = Math.max(files.size, 1);
-  const estimatedTotalLines = Array.from(files.values()).reduce((acc, fileMeta) => {
-    const safeEstimate = fileMeta.maxLine > 0 ? Math.max(fileMeta.maxLine, 80) : 120;
-    return acc + safeEstimate;
-  }, 0);
-
-  const issuesCount = issues.length;
-  const issuesPer100Lines = issuesCount / Math.max(estimatedTotalLines / 100, 1);
-  const issuesPerFile = issuesCount / fileCount;
-
-  const penalty =
-    issuesPer100Lines * 6 +
-    issuesPerFile * 12 +
-    Math.max(0, issuesCount - 2) * 2;
-
-  const score = Math.round(clamp(100 - penalty, 0, 100));
-
-  if (score >= 85) {
-    return { label: "INCLUSIVO", score };
-  }
-
-  if (score >= 70) {
-    return { label: "BOA INCLUSAO", score };
-  }
-
-  if (score >= 50) {
-    return { label: "FALTA INCLUSAO", score };
-  }
-
-  if (score >= 30) {
-    return { label: "POUCO INCLUSIVO", score };
-  }
-
-  return { label: "NADA INCLUSIVO", score };
+  return { label, score };
 }
 
 function getStatusBadgeClass(label: string) {
@@ -166,15 +127,40 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
 
   const issues: Issue[] = issuesRaw
     .filter((item) => item && typeof item === "object")
-    .map((item) => {
+    .map((item, index) => {
       const issueObj = item as Record<string, unknown>;
 
+      const filename = String(
+        issueObj.filename ?? issueObj.file ?? "arquivo-desconhecido"
+      );
+
+      const lineValue = typeof issueObj.line === "number" ? issueObj.line : null;
+      const issueDescription = String(
+        issueObj.issue ??
+          issueObj.description ??
+          "Problema sem descrição"
+      );
+
+      const snippetValue = typeof issueObj.snippet === "string" ? issueObj.snippet : "";
+
+      const improvementValue = String(
+        issueObj.improvement ??
+          issueObj.fixCode ??
+          issueObj.fix_code ??
+          issueObj.correctedSnippet ??
+          issueObj.corrected_snippet ??
+          issueObj.solutionCode ??
+          issueObj.solution_code ??
+          issueObj.solution ??
+          issueObj.recommendation ??
+          ""
+      );
+
       return {
-        filename: String(
-          issueObj.filename ?? issueObj.file ?? "arquivo-desconhecido"
-        ),
-        line: typeof issueObj.line === "number" ? issueObj.line : null,
-        snippet: typeof issueObj.snippet === "string" ? issueObj.snippet : "",
+        id: `${filename}:${lineValue ?? "-"}:${issueDescription}:${index}`,
+        filename,
+        line: lineValue,
+        snippet: snippetValue,
 
         severity: (() => {
           const sev =
@@ -209,18 +195,7 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
           return undefined;
         })(),
 
-        improvement: String(
-          issueObj.improvement ??
-          issueObj.fixCode ??
-            issueObj.fix_code ??
-            issueObj.correctedSnippet ??
-            issueObj.corrected_snippet ??
-            issueObj.solutionCode ??
-            issueObj.solution_code ??
-            issueObj.solution ??
-            issueObj.recommendation ??
-            ""
-        ),
+        improvement: improvementValue,
         evidence_urls: (() => {
           const rawEvidence = issueObj.evidence_urls ?? issueObj.evidenceUrls;
 
@@ -233,11 +208,7 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
             .map((value) => value.trim())
             .filter((value) => value.length > 0);
         })(),
-        issue: String(
-          issueObj.issue ??
-            issueObj.description ??
-            "Problema sem descrição"
-        ),
+        issue: issueDescription,
       };
     });
 
@@ -257,7 +228,12 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
     data.suggestion;
 
   return {
-    status: typeof data.status === "string" ? data.status : undefined,
+    status:
+      typeof data.status === "string"
+        ? data.status
+        : typeof data.Status === "string"
+        ? data.Status
+        : undefined,
     error: typeof data.error === "string" ? data.error : undefined,
     message: typeof data.message === "string" ? data.message : undefined,
     analysis: {
@@ -273,6 +249,22 @@ function normalizeAnalysisResponse(raw: unknown): ApiResponse {
       improvementCode:
         typeof improvementCodeCandidate === "string"
           ? improvementCodeCandidate
+          : undefined,
+      score:
+        typeof analysisRaw?.score === "number"
+          ? analysisRaw.score
+          : typeof data.score === "number"
+          ? data.score
+          : undefined,
+      scoreLabel:
+        typeof analysisRaw?.scoreLabel === "string"
+          ? analysisRaw.scoreLabel
+          : typeof analysisRaw?.score_label === "string"
+          ? analysisRaw.score_label
+          : typeof data.scoreLabel === "string"
+          ? data.scoreLabel
+          : typeof data.score_label === "string"
+          ? data.score_label
           : undefined,
     },
   };
@@ -291,6 +283,22 @@ export default function AnalysisPage() {
   const [apiMessage, setApiMessage] = useState<string | null>(null);
   const [errorPopupMessage, setErrorPopupMessage] = useState<string | null>(null);
   const [fileSortOptions, setFileSortOptions] = useState<Record<string, SortMode>>({});
+  const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(new Set());
+
+  const selectedIssuesCount = useMemo(() => {
+    const issues = analysis?.issues ?? [];
+    return issues.filter((issue) => selectedIssueIds.has(issue.id)).length;
+  }, [analysis?.issues, selectedIssueIds]);
+
+  const selectedIssuesWithImprovementCount = useMemo(() => {
+    const issues = analysis?.issues ?? [];
+    return issues.filter(
+      (issue) =>
+        selectedIssueIds.has(issue.id) &&
+        !!issue.improvement &&
+        issue.improvement.trim().length > 0
+    ).length;
+  }, [analysis?.issues, selectedIssueIds]);
 
   function showErrorPopup(message: string) {
     setErrorPopupMessage(message);
@@ -323,6 +331,16 @@ export default function AnalysisPage() {
 
   const inclusivityStatus = useMemo(() => {
     return computeInclusivityStatus(analysis);
+  }, [analysis]);
+
+  useEffect(() => {
+    const issues = analysis?.issues ?? [];
+    if (issues.length === 0) {
+      setSelectedIssueIds(new Set());
+      return;
+    }
+
+    setSelectedIssueIds(new Set(issues.map((issue) => issue.id)));
   }, [analysis]);
 
   async function fetchAnalysis(url: string) {
@@ -392,7 +410,14 @@ export default function AnalysisPage() {
       return;
     }
 
-    const issuesWithImprovement = analysis.issues.filter(
+    const selectedIssues = analysis.issues.filter((item) => selectedIssueIds.has(item.id));
+
+    if (selectedIssues.length === 0) {
+      showErrorPopup("Marque ao menos uma falha para criar Pull Request.");
+      return;
+    }
+
+    const issuesWithImprovement = selectedIssues.filter(
       (item) => item.improvement && item.improvement.trim().length > 0
     );
 
@@ -584,18 +609,10 @@ export default function AnalysisPage() {
                   className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 absolute left-1/2 -translate-x-1/2 mt-2 w-150 bg-slate-800 text-sm text-slate-200 p-3 rounded shadow-lg z-50 break-words ml-36"
                 >
                   A pontuação de acessibilidade é calculada com base nos problemas encontrados no código.
+                  A pontuação e a classificação são fornecidas diretamente pelo backend.
 
                   <br /><br />
-
-                  Consideramos três fatores principais:
-                  <br />
-                  <strong>1.</strong> Quantidade de falhas a cada 100 linhas de código<br />
-                  <strong>2.</strong> Quantidade média de falhas por arquivo<br />
-                  <strong>3.</strong> Penalidade extra quando existem mais de 2 falhas
-
-                  <br /><br />
-
-                  Quanto mais problemas forem encontrados, maior será a penalidade e menor será a pontuação final.
+                  O frontend apenas exibe os valores retornados na análise.
                 </div>
               </div>
 
@@ -685,10 +702,30 @@ export default function AnalysisPage() {
 
                             {sortedIssues.map((issue, index) => (
                         <div
-                          key={`${filename}-${index}`}
+                          key={issue.id}
                           className="p-4 mt-4 bg-black/20 border border-white/10 rounded-lg"
                         >
                           <div className="flex gap-4 flex-wrap mb-2">
+                            <label className="inline-flex items-center gap-2 text-slate-200 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={selectedIssueIds.has(issue.id)}
+                                onChange={(event) => {
+                                  setSelectedIssueIds((previous) => {
+                                    const next = new Set(previous);
+                                    if (event.target.checked) {
+                                      next.add(issue.id);
+                                    } else {
+                                      next.delete(issue.id);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className="h-4 w-4 rounded border-white/20 bg-slate-900 text-cyan-400 focus:ring-cyan-400"
+                              />
+                              Selecionar para PR
+                            </label>
+
                             <span className="text-cyan-200 font-mono text-sm">
                               <strong>Linha:</strong> {issue.line ?? "-"}
                             </span>
@@ -784,6 +821,10 @@ export default function AnalysisPage() {
         <div className="mt-10">
           {analysis && analysis.issues && analysis.issues.length > 0 ? (
             <div className="mb-4 space-y-3">
+              <p className="text-sm text-slate-300">
+                Selecionadas: {selectedIssuesCount} falha{selectedIssuesCount === 1 ? "" : "s"} ({selectedIssuesWithImprovementCount} com melhoria aplicável)
+              </p>
+
               <button
                 onClick={handleCreatePullRequest}
                 disabled={isCreatingPullRequest || loading}

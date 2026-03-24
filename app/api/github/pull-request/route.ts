@@ -39,6 +39,12 @@ function getNumberProp(value: unknown, key: string) {
   return typeof prop === "number" ? prop : undefined;
 }
 
+function getBooleanProp(value: unknown, key: string) {
+  if (!isObjectRecord(value)) return undefined;
+  const prop = value[key];
+  return typeof prop === "boolean" ? prop : undefined;
+}
+
 function getUnknownProp(value: unknown, key: string) {
   if (!isObjectRecord(value)) return undefined;
   return value[key];
@@ -144,6 +150,10 @@ async function githubRequest<T>(url: string, token: string, init?: RequestInit) 
   };
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
@@ -167,6 +177,14 @@ export async function POST(req: NextRequest) {
   const owner = parsedRepo.owner;
   const repo = parsedRepo.repo;
 
+  const viewerResponse = await githubRequest<{ login?: string }>("https://api.github.com/user", token);
+  const viewerLogin = getStringProp(viewerResponse.data, "login");
+
+  if (!viewerResponse.ok || !viewerLogin) {
+    const message = asMessage(viewerResponse.data) ?? "Não foi possível validar o usuário autenticado no GitHub.";
+    return NextResponse.json({ message }, { status: viewerResponse.status || 401 });
+  }
+
   const repoDetails = await githubRequest<{ default_branch?: string; private?: boolean; permissions?: Record<string, boolean> }>(
     `https://api.github.com/repos/${owner}/${repo}`,
     token
@@ -184,6 +202,55 @@ export async function POST(req: NextRequest) {
     defaultBranchCandidate && defaultBranchCandidate.trim().length > 0
       ? defaultBranchCandidate
       : undefined;
+
+  const permissions = getUnknownProp(repoData, "permissions");
+  const canPush =
+    getBooleanProp(permissions, "push") === true ||
+    getBooleanProp(permissions, "maintain") === true ||
+    getBooleanProp(permissions, "admin") === true;
+
+  let workingOwner = owner;
+  let workingRepo = repo;
+
+  if (!canPush) {
+    const forkResponse = await githubRequest<{ name?: string }>(
+      `https://api.github.com/repos/${owner}/${repo}/forks`,
+      token,
+      { method: "POST" }
+    );
+
+    if (!forkResponse.ok && forkResponse.status !== 202) {
+      const message =
+        asMessage(forkResponse.data) ??
+        "Sem permissão para escrever no repositório alvo e não foi possível criar fork automático.";
+      return NextResponse.json({ message }, { status: forkResponse.status || 403 });
+    }
+
+    workingOwner = viewerLogin;
+    workingRepo = getStringProp(forkResponse.data, "name") || repo;
+
+    let forkAvailable = false;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const forkDetails = await githubRequest(
+        `https://api.github.com/repos/${workingOwner}/${workingRepo}`,
+        token
+      );
+
+      if (forkDetails.ok) {
+        forkAvailable = true;
+        break;
+      }
+
+      await delay(1000);
+    }
+
+    if (!forkAvailable) {
+      return NextResponse.json(
+        { message: "Fork criado, mas ainda não ficou disponível no GitHub. Tente novamente em alguns segundos." },
+        { status: 409 }
+      );
+    }
+  }
 
   const resolvedBaseBranch = body.baseBranch?.trim() || defaultBranch || "main";
 
@@ -203,7 +270,7 @@ export async function POST(req: NextRequest) {
   let branchName = `inclusivecode/a11y-${Date.now()}`;
 
   const branchCreation = await githubRequest(
-    `https://api.github.com/repos/${owner}/${repo}/git/refs`,
+    `https://api.github.com/repos/${workingOwner}/${workingRepo}/git/refs`,
     token,
     {
       method: "POST",
@@ -218,7 +285,7 @@ export async function POST(req: NextRequest) {
     branchName = `${branchName}-${Math.floor(Math.random() * 10000)}`;
 
     const retryCreation = await githubRequest(
-      `https://api.github.com/repos/${owner}/${repo}/git/refs`,
+      `https://api.github.com/repos/${workingOwner}/${workingRepo}/git/refs`,
       token,
       {
         method: "POST",
@@ -230,7 +297,9 @@ export async function POST(req: NextRequest) {
     );
 
     if (!retryCreation.ok) {
-      const message = asMessage(retryCreation.data) ?? "Não foi possível criar branch para as correções.";
+      const message =
+        asMessage(retryCreation.data) ??
+        "Não foi possível criar branch para as correções. Verifique permissões de escrita/fork no repositório.";
       return NextResponse.json({ message }, { status: retryCreation.status || 400 });
     }
   }
@@ -256,7 +325,7 @@ export async function POST(req: NextRequest) {
 
   for (const [path, fileIssues] of issuesByFile.entries()) {
     const fileResponse = await githubRequest(
-      `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branchName)}`,
+      `https://api.github.com/repos/${workingOwner}/${workingRepo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branchName)}`,
       token
     );
 
@@ -301,7 +370,7 @@ export async function POST(req: NextRequest) {
     }
 
     const updateResponse = await githubRequest(
-      `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`,
+      `https://api.github.com/repos/${workingOwner}/${workingRepo}/contents/${encodeURIComponent(path)}`,
       token,
       {
         method: "PUT",
@@ -337,7 +406,7 @@ export async function POST(req: NextRequest) {
     ].join("\n");
 
     await githubRequest(
-      `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(fallbackFilePath)}`,
+      `https://api.github.com/repos/${workingOwner}/${workingRepo}/contents/${encodeURIComponent(fallbackFilePath)}`,
       token,
       {
         method: "PUT",
@@ -360,7 +429,7 @@ export async function POST(req: NextRequest) {
         title:
           body.title?.trim() ||
           `chore(a11y): aplicar correções sugeridas (${new Date().toISOString().slice(0, 10)})`,
-        head: branchName,
+        head: workingOwner === owner && workingRepo === repo ? branchName : `${workingOwner}:${branchName}`,
         base: resolvedBaseBranch,
         body: buildPullRequestBody(body.body, issues),
         maintainer_can_modify: true,
@@ -385,10 +454,14 @@ export async function POST(req: NextRequest) {
   const pullRequestNumber = getNumberProp(pullRequestData, "number");
 
   return NextResponse.json({
-    message: "Pull Request criado com sucesso.",
+    message:
+      workingOwner === owner && workingRepo === repo
+        ? "Pull Request criado com sucesso."
+        : "Pull Request criado com sucesso a partir do seu fork.",
     pullRequestUrl,
     pullRequestNumber,
     branchName,
+    headRepository: `${workingOwner}/${workingRepo}`,
     baseBranch: resolvedBaseBranch,
     changedFiles,
     skippedFiles,

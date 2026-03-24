@@ -14,13 +14,147 @@ import {
 } from "lucide-react";
 import Layout from "../components/Layout";
 
+type ScoreRingProps = {
+  score?: number;
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getScoreRingColorClass(score: number) {
+  if (score >= 85) {
+    return "stroke-emerald-400";
+  }
+
+  if (score >= 70) {
+    return "stroke-lime-400";
+  }
+
+  if (score >= 50) {
+    return "stroke-yellow-400";
+  }
+
+  if (score >= 30) {
+    return "stroke-orange-400";
+  }
+
+  return "stroke-red-400";
+}
+
+function getScoreTextColorClass(score?: number) {
+  if (typeof score !== "number") {
+    return "text-slate-300";
+  }
+
+  if (score >= 85) {
+    return "text-emerald-300";
+  }
+
+  if (score >= 70) {
+    return "text-lime-300";
+  }
+
+  if (score >= 50) {
+    return "text-yellow-300";
+  }
+
+  if (score >= 30) {
+    return "text-orange-300";
+  }
+
+  return "text-red-300";
+}
+
+function ScoreRing({ score }: ScoreRingProps) {
+  const hasScore = typeof score === "number";
+  const targetScore = hasScore ? clamp(score, 0, 100) : 0;
+  const [animatedScore, setAnimatedScore] = useState(0);
+
+  useEffect(() => {
+    if (!hasScore) {
+      setAnimatedScore(0);
+      return;
+    }
+
+    let frameId = 0;
+    const durationMs = 900;
+    const start = performance.now();
+
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      const progress = clamp(elapsed / durationMs, 0, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const value = Math.round(targetScore * eased);
+      setAnimatedScore(value);
+
+      if (progress < 1) {
+        frameId = requestAnimationFrame(tick);
+      }
+    };
+
+    frameId = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
+  }, [hasScore, targetScore]);
+
+  const size = 52;
+  const stroke = 6;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference - (animatedScore / 100) * circumference;
+
+  return (
+    <div
+      className="relative shrink-0 h-[52px] w-[52px]"
+      aria-label={hasScore ? `Score da análise: ${targetScore}` : "Score da análise indisponível"}
+    >
+      <svg
+        width={size}
+        height={size}
+        style={{ transform: "scaleX(-1) rotate(-90deg)" }}
+      >
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          strokeWidth={stroke}
+          fill="none"
+          className="stroke-slate-700/70"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          strokeWidth={stroke}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={hasScore ? dashOffset : circumference}
+          className={`${getScoreRingColorClass(targetScore)} transition-[stroke-dashoffset] duration-75`}
+        />
+      </svg>
+
+      <div
+        className={`absolute inset-0 flex items-center justify-center text-[12px] font-black ${getScoreTextColorClass(
+          hasScore ? targetScore : undefined
+        )}`}
+      >
+        {hasScore ? animatedScore : "--"}
+      </div>
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [showRecoveryNotice, setShowRecoveryNotice] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
-  const [analyses, setAnalyses] = useState<Array<{ id?: string; repoUrl?: string; createdAt?: string; rawJson?: string; score?: number }>>([]);
+  const [analyses, setAnalyses] = useState<Array<{ id?: string; repoUrl?: string; createdAt?: string; rawJson?: string; score?: number; scoreLabel?: string }>>([]);
   const [isLoadingAnalyses, setIsLoadingAnalyses] = useState(false);
   const [isLinkingGithub, setIsLinkingGithub] = useState(false);
   const [isGithubLinked, setIsGithubLinked] = useState(false);
@@ -32,12 +166,23 @@ export default function ProfilePage() {
       return item.score;
     }
 
-    if (typeof item.rawJson !== "string") {
+    if (typeof item.Score === "number") {
+      return item.Score;
+    }
+
+    const rawJsonValue =
+      typeof item.rawJson === "string"
+        ? item.rawJson
+        : typeof item.RawJson === "string"
+        ? item.RawJson
+        : undefined;
+
+    if (!rawJsonValue) {
       return undefined;
     }
 
     try {
-      const parsed = JSON.parse(item.rawJson) as Record<string, unknown>;
+      const parsed = JSON.parse(rawJsonValue) as Record<string, unknown>;
       const directScore = parsed.score;
 
       if (typeof directScore === "number") {
@@ -52,6 +197,50 @@ export default function ProfilePage() {
       const nestedScore = nestedAnalysis?.score;
       if (typeof nestedScore === "number") {
         return nestedScore;
+      }
+    } catch {
+      return undefined;
+    }
+
+    return undefined;
+  };
+
+  const parseScoreLabel = (item: Record<string, unknown>) => {
+    if (typeof item.scoreLabel === "string") {
+      return item.scoreLabel;
+    }
+
+    if (typeof item.ScoreLabel === "string") {
+      return item.ScoreLabel;
+    }
+
+    const rawJsonValue =
+      typeof item.rawJson === "string"
+        ? item.rawJson
+        : typeof item.RawJson === "string"
+        ? item.RawJson
+        : undefined;
+
+    if (!rawJsonValue) {
+      return undefined;
+    }
+
+    try {
+      const parsed = JSON.parse(rawJsonValue) as Record<string, unknown>;
+      const directLabel = parsed.scoreLabel;
+
+      if (typeof directLabel === "string") {
+        return directLabel;
+      }
+
+      const nestedAnalysis =
+        parsed.analysis && typeof parsed.analysis === "object"
+          ? (parsed.analysis as Record<string, unknown>)
+          : null;
+
+      const nestedLabel = nestedAnalysis?.scoreLabel;
+      if (typeof nestedLabel === "string") {
+        return nestedLabel;
       }
     } catch {
       return undefined;
@@ -163,9 +352,13 @@ export default function ProfilePage() {
       const linkedUserId = sessionStorage.getItem("github_linked_user_id");
       const storedGithubUsername = sessionStorage.getItem("github_username") ?? "";
 
-      if (githubToken && storedUserId && linkedUserId === storedUserId) {
+      const hasLinkedGithubForCurrentUser =
+        !!githubToken && !!storedUserId && linkedUserId === storedUserId;
+      const hasGithubSessionFromDirectLogin = !!githubToken && !storedUserId;
+
+      if (hasLinkedGithubForCurrentUser || hasGithubSessionFromDirectLogin) {
         setIsGithubLinked(true);
-        setGithubUsername(storedGithubUsername);
+        setGithubUsername(storedGithubUsername || storedUser);
       } else {
         setIsGithubLinked(false);
         setGithubUsername("");
@@ -186,11 +379,32 @@ export default function ProfilePage() {
             const normalized = source
               .filter((item: unknown): item is Record<string, unknown> => !!item && typeof item === "object")
               .map((item: Record<string, unknown>) => ({
-                id: typeof item.id === "string" || typeof item.id === "number" ? String(item.id) : undefined,
-                repoUrl: typeof item.repoUrl === "string" ? item.repoUrl : undefined,
-                createdAt: typeof item.createdAt === "string" ? item.createdAt : undefined,
-                rawJson: typeof item.rawJson === "string" ? item.rawJson : undefined,
+                id:
+                  typeof item.id === "string" || typeof item.id === "number"
+                    ? String(item.id)
+                    : typeof item.Id === "string" || typeof item.Id === "number"
+                    ? String(item.Id)
+                    : undefined,
+                repoUrl:
+                  typeof item.repoUrl === "string"
+                    ? item.repoUrl
+                    : typeof item.RepoUrl === "string"
+                    ? item.RepoUrl
+                    : undefined,
+                createdAt:
+                  typeof item.createdAt === "string"
+                    ? item.createdAt
+                    : typeof item.CreatedAt === "string"
+                    ? item.CreatedAt
+                    : undefined,
+                rawJson:
+                  typeof item.rawJson === "string"
+                    ? item.rawJson
+                    : typeof item.RawJson === "string"
+                    ? item.RawJson
+                    : undefined,
                 score: parseScore(item),
+                scoreLabel: parseScoreLabel(item),
               }));
 
             setAnalyses(normalized);
@@ -288,11 +502,11 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={handleConnectGithub}
-                    disabled={isLinkingGithub}
+                    disabled={isLinkingGithub || isGithubLinked}
                     className="cursor-pointer w-full flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-70 text-white py-3 rounded-xl font-mono text-xs uppercase tracking-widest transition-all"
                   >
                     <Github className="w-4 h-4" />
-                    {isLinkingGithub ? "Conectando..." : isGithubLinked ? "Reconectar GitHub" : "Conectar GitHub"}
+                    {isGithubLinked ? "CONECTADO" : isLinkingGithub ? "Conectando..." : "Conectar GitHub"}
                   </button>
 
                   {isGithubLinked ? (
@@ -349,6 +563,8 @@ export default function ProfilePage() {
                       className=" cursor-pointer w-full text-left p-4 bg-slate-900/30 border border-white/5 rounded-lg hover:border-cyan-500/30 transition-colors"
                     >
                       <div className="flex items-start gap-4">
+                        <ScoreRing score={analysis.score} />
+
                         <div className="flex-1 min-w-0">
                           <p className="text-lg font-mono text-cyan-400 truncate">
                             {analysis.repoUrl || "Análise"}
