@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const upstream = await fetch(`${DEV_URL}/api/Auth/register`, {
+    const upstream = await fetch(`${UPSTREAM_BASE}/api/Auth/register`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
