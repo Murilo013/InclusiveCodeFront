@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(`${UPSTREAM_BASE}/api/analyze/history/me?userId=${userId}`, {
+    const upstream = await fetch(`${DEV_URL}/api/analyze/history/me?userId=${userId}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
