@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import PasswordRecoveryModal from "../components/PasswordRecoveryModal";
 import { signInWithPopup, GithubAuthProvider, getAdditionalUserInfo } from "firebase/auth";
+import { setStoredAuthUser, setStoredAuthUserFromPayload } from "../lib/authUserSession";
 
 function parseApiResponse(raw: string): Record<string, unknown> {
   if (!raw) {
@@ -17,34 +18,6 @@ function parseApiResponse(raw: string): Record<string, unknown> {
   } catch {
     return { message: raw };
   }
-}
-
-function resolveUserIdFromPayload(data: Record<string, unknown>): string | null {
-  if (typeof data.UserId === "number" && data.UserId > 0) {
-    return String(data.UserId);
-  }
-
-  if (typeof data.userId === "number" && data.userId > 0) {
-    return String(data.userId);
-  }
-
-  if (typeof data.id === "number" && data.id > 0) {
-    return String(data.id);
-  }
-
-  if (typeof data.UserId === "string" && data.UserId.trim().length > 0) {
-    return data.UserId.trim();
-  }
-
-  if (typeof data.userId === "string" && data.userId.trim().length > 0) {
-    return data.userId.trim();
-  }
-
-  if (typeof data.id === "string" && data.id.trim().length > 0) {
-    return data.id.trim();
-  }
-
-  return null;
 }
 
 export default function LoginScreen() {
@@ -185,17 +158,11 @@ export default function LoginScreen() {
           ? data.username
           : email;
 
-      const resolvedUserId = resolveUserIdFromPayload(data);
-
-
       try {
-        sessionStorage.setItem("auth_user", resolvedUsername);
-        sessionStorage.setItem("auth_email", email);
-        if (resolvedUserId) {
-          sessionStorage.setItem("auth_user_id", resolvedUserId);
-          sessionStorage.setItem("userId", resolvedUserId);
-          sessionStorage.setItem("UserId", resolvedUserId);
-        }
+        setStoredAuthUserFromPayload(data, {
+          username: resolvedUsername,
+          email,
+        });
       } catch {}
 
       router.push("/scanner");
@@ -225,7 +192,7 @@ export default function LoginScreen() {
 
     const deterministicPassword = `Gh@${providerUid}#InclusiveCode`;
 
-    const tryLogin = async () => {
+    const tryLogin = async (): Promise<Record<string, unknown> | null> => {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -241,12 +208,12 @@ export default function LoginScreen() {
         return null;
       }
 
-      return resolveUserIdFromPayload(data);
+      return data;
     };
 
-    const existingUserId = await tryLogin();
-    if (existingUserId) {
-      return existingUserId;
+    const existingUserPayload = await tryLogin();
+    if (existingUserPayload) {
+      return existingUserPayload;
     }
 
     const registerResponse = await fetch("/api/auth/register", {
@@ -254,7 +221,13 @@ export default function LoginScreen() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ username, email, password: deterministicPassword }),
+      body: JSON.stringify({
+        username,
+        email,
+        password: deterministicPassword,
+        pro: false,
+        analisesCount: 0,
+      }),
     });
 
     await registerResponse.text();
@@ -269,10 +242,8 @@ export default function LoginScreen() {
       provider.addScope("repo");
       provider.addScope("read:user");
       const result = await signInWithPopup(auth, provider);
-      console.log('usuario', result.user);
 
       const credential = GithubAuthProvider.credentialFromResult(result);
-      console.log('token', credential?.accessToken);
 
       const additionalUserInfo = getAdditionalUserInfo(result);
       const profileLogin =
@@ -285,10 +256,10 @@ export default function LoginScreen() {
           ? profileLogin
           : result.user.displayName || "GitHub User";
 
-      let resolvedBackendUserId: string | null = null;
+      let backendLoginPayload: Record<string, unknown> | null = null;
 
       try {
-        resolvedBackendUserId = await ensureBackendUserForGithub({
+        backendLoginPayload = await ensureBackendUserForGithub({
           username: githubUsername,
           email: result.user.email || "",
           providerUid: result.user.uid,
@@ -297,14 +268,21 @@ export default function LoginScreen() {
         console.warn("Falha ao provisionar conta no backend via GitHub:", provisionError);
       }
 
-      sessionStorage.setItem("auth_user", githubUsername);
-      sessionStorage.setItem("auth_email", result.user.email || "");
+      const storedUser =
+        backendLoginPayload && typeof backendLoginPayload === "object"
+          ? setStoredAuthUserFromPayload(backendLoginPayload, {
+              username: githubUsername,
+              email: result.user.email || "",
+            })
+          : setStoredAuthUser({
+              username: githubUsername,
+              email: result.user.email || "",
+              verificado: true,
+              analisesCount: 0,
+              pro: false,
+            });
 
-      if (resolvedBackendUserId) {
-        sessionStorage.setItem("auth_user_id", resolvedBackendUserId);
-        sessionStorage.setItem("userId", resolvedBackendUserId);
-        sessionStorage.setItem("UserId", resolvedBackendUserId);
-      }
+      const resolvedBackendUserId = storedUser?.userId ?? null;
 
       if (credential?.accessToken) {
         sessionStorage.setItem("github_access_token", credential.accessToken);
@@ -318,7 +296,7 @@ export default function LoginScreen() {
 
       router.push("/scanner");
     } catch (error) {
-      console.log('erro', error);
+      console.log("erro", error);
       setError("Falha no login com GitHub. Tente novamente.");
     }
   };

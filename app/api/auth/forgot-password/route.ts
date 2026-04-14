@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { UPSTREAM_BASE,DEV_URL } from "../../../lib/upstream";
+import { DEV_URL } from "../../../lib/upstream";
 
 function parseUpstreamResponse(raw: string) {
   if (!raw) return {};

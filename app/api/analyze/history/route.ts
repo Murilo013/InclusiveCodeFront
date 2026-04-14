@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { UPSTREAM_BASE,DEV_URL } from '../../../lib/upstream';
+import { DEV_URL } from '../../../lib/upstream';
 
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
@@ -31,3 +31,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: 'Failed to fetch history', detail: message }, { status: 502 });
   }
 }
+

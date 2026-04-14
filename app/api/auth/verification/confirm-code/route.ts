@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
         email: verification.pending.email,
         password: verification.pending.password,
         verificado: true,
+        pro: false,
+        analisesCount: 0,
       }),
     });
 

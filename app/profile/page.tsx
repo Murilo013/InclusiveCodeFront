@@ -13,6 +13,12 @@ import {
   Zap,
 } from "lucide-react";
 import Layout from "../components/Layout";
+import {
+  getStoredAuthUser,
+  setStoredAuthUser,
+  setStoredAuthUserFromPayload,
+  type AuthUserSession,
+} from "../lib/authUserSession";
 
 type ScoreRingProps = {
   score?: number;
@@ -73,7 +79,6 @@ function ScoreRing({ score }: ScoreRingProps) {
 
   useEffect(() => {
     if (!hasScore) {
-      setAnimatedScore(0);
       return;
     }
 
@@ -160,6 +165,13 @@ export default function ProfilePage() {
   const [isGithubLinked, setIsGithubLinked] = useState(false);
   const [githubUsername, setGithubUsername] = useState("");
   const [githubLinkMessage, setGithubLinkMessage] = useState<string | null>(null);
+  const [analisesCount, setAnalisesCount] = useState(0);
+  const [isProUser, setIsProUser] = useState(false);
+  const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
+  const [isUpgradingPro, setIsUpgradingPro] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
+  const [showUpgradeCodePrompt, setShowUpgradeCodePrompt] = useState(false);
+  const [upgradeCode, setUpgradeCode] = useState("");
 
   const parseScore = (item: Record<string, unknown>) => {
     if (typeof item.score === "number") {
@@ -279,11 +291,158 @@ export default function ProfilePage() {
     }
   };
 
+  const applyUserState = (user: AuthUserSession | null) => {
+    if (!user) {
+      return;
+    }
+
+    if (user.username) {
+      setUsername(user.username);
+    }
+
+    if (user.email) {
+      setEmail(user.email);
+    }
+
+    setAnalisesCount(user.analisesCount);
+    setIsProUser(user.pro);
+  };
+
+  const parseRawResponse = (raw: string) => {
+    if (!raw) {
+      return {} as Record<string, unknown>;
+    }
+
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return { message: raw } as Record<string, unknown>;
+    }
+  };
+
+  const refreshUserProfile = async (targetEmail: string, fallbackUsername?: string) => {
+    if (!targetEmail) {
+      return;
+    }
+
+    setIsRefreshingProfile(true);
+
+    try {
+      const response = await fetch(`/api/auth/user/${encodeURIComponent(targetEmail)}`, {
+        cache: "no-store",
+      });
+      const raw = await response.text();
+      const data = parseRawResponse(raw);
+
+      if (!response.ok) {
+        return;
+      }
+
+      const updated = setStoredAuthUserFromPayload(data, {
+        email: targetEmail,
+        username: fallbackUsername,
+      });
+
+      if (updated) {
+        applyUserState(updated);
+      }
+    } catch {
+      // Keep current profile snapshot if refresh fails.
+    } finally {
+      setIsRefreshingProfile(false);
+    }
+  };
+
+  const handleUpgradeToPro = async (code: string) => {
+    setUpgradeMessage(null);
+
+    const currentUser = getStoredAuthUser();
+    const targetEmail = (currentUser?.email || email).trim();
+    const sanitizedCode = code.trim();
+
+    if (!targetEmail) {
+      setUpgradeMessage("Nao foi possivel identificar seu email para upgrade.");
+      return;
+    }
+
+    if (!sanitizedCode) {
+      setUpgradeMessage("Informe o codigo de upgrade.");
+      return;
+    }
+
+    if (currentUser?.pro || isProUser) {
+      setUpgradeMessage("Sua conta ja possui plano Pro ativo.");
+      return;
+    }
+
+    setIsUpgradingPro(true);
+
+    try {
+      const response = await fetch(`/api/auth/user/${encodeURIComponent(targetEmail)}/upgrade`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          upgradeCode: sanitizedCode,
+        }),
+      });
+
+      const raw = await response.text();
+      const data = parseRawResponse(raw);
+
+      if (!response.ok) {
+        const message =
+          typeof data.message === "string" && data.message.trim().length > 0
+            ? data.message
+            : "Nao foi possivel ativar o plano Pro agora.";
+        setUpgradeMessage(message);
+        return;
+      }
+
+      const updated = setStoredAuthUser({ pro: true });
+      if (updated) {
+        applyUserState(updated);
+      }
+
+      const successMessage =
+        typeof data.message === "string" && data.message.trim().length > 0
+          ? data.message
+          : "Upgrade concluido! Seu plano Pro foi ativado.";
+
+      setUpgradeMessage(successMessage);
+      setShowUpgradeCodePrompt(false);
+      setUpgradeCode("");
+
+      await refreshUserProfile(targetEmail, currentUser?.username || username);
+    } catch {
+      setUpgradeMessage("Falha ao conectar com a API de upgrade Pro.");
+    } finally {
+      setIsUpgradingPro(false);
+    }
+  };
+
+  const handleOpenUpgradePrompt = () => {
+    setUpgradeMessage(null);
+
+    if (isProUser) {
+      setUpgradeMessage("Sua conta ja possui plano Pro ativo.");
+      return;
+    }
+
+    setUpgradeCode("");
+    setShowUpgradeCodePrompt(true);
+  };
+
+  const handleConfirmUpgradeCode = async () => {
+    await handleUpgradeToPro(upgradeCode);
+  };
+
   const handleConnectGithub = async () => {
     setGithubLinkMessage(null);
 
     try {
-      const storedUserId = sessionStorage.getItem("auth_user_id");
+      const storedUserId = getStoredAuthUser()?.userId;
 
       if (!storedUserId) {
         setGithubLinkMessage("Faca login com sua conta normal antes de conectar o GitHub.");
@@ -334,18 +493,18 @@ export default function ProfilePage() {
 
   useEffect(() => {
     try {
-      const storedUser = sessionStorage.getItem("auth_user");
-      const storedEmail = sessionStorage.getItem("auth_email");
-      const storedUserId = sessionStorage.getItem("auth_user_id");
+      const storedUser = getStoredAuthUser();
+      const storedUserId = storedUser?.userId ?? "";
 
-      if (!storedUser) {
+      if (!storedUser?.username) {
         router.replace("/login");
         return;
       }
 
-      setUsername(storedUser);
-      if (storedEmail) {
-        setEmail(storedEmail);
+      applyUserState(storedUser);
+
+      if (storedUser.email) {
+        void refreshUserProfile(storedUser.email, storedUser.username);
       }
 
       const githubToken = sessionStorage.getItem("github_access_token");
@@ -358,7 +517,7 @@ export default function ProfilePage() {
 
       if (hasLinkedGithubForCurrentUser || hasGithubSessionFromDirectLogin) {
         setIsGithubLinked(true);
-        setGithubUsername(storedGithubUsername || storedUser);
+        setGithubUsername(storedGithubUsername || storedUser.username);
       } else {
         setIsGithubLinked(false);
         setGithubUsername("");
@@ -433,6 +592,44 @@ export default function ProfilePage() {
 
   return (
     <Layout>
+      {showUpgradeCodePrompt ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl border border-cyan-500/30 bg-slate-900 p-6 shadow-2xl">
+            <h3 className="text-lg font-black text-white">Ativar plano Pro</h3>
+            <p className="mt-2 text-sm text-slate-300">
+              Digite o codigo de upgrade para liberar seu plano Pro.
+            </p>
+
+            <input
+              type="text"
+              value={upgradeCode}
+              onChange={(event) => setUpgradeCode(event.target.value)}
+              placeholder="Digite o codigo"
+              className="mt-4 w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-cyan-500/60 focus:outline-none"
+            />
+
+            <div className="mt-5 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowUpgradeCodePrompt(false)}
+                disabled={isUpgradingPro}
+                className="cursor-pointer flex-1 rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/5 transition-colors disabled:opacity-70"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmUpgradeCode}
+                disabled={isUpgradingPro}
+                className="cursor-pointer flex-1 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-500 transition-colors disabled:opacity-70"
+              >
+                {isUpgradingPro ? "Validando..." : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {recoveryOpen ? (
         <PasswordRecoveryModal email={email} onClose={() => setRecoveryOpen(false)} />
       ) : null}
@@ -459,14 +656,17 @@ export default function ProfilePage() {
             <div className="flex flex-wrap justify-center md:justify-start gap-4">
               <span className="flex items-center gap-2 text-xs font-mono text-cyan-500/80 bg-cyan-500/5 px-3 py-1 rounded-full border border-cyan-500/10">
                 <Shield className="w-3 h-3" /> System_Admin
-              </span>           
+              </span>
+              <span className="flex items-center gap-2 text-xs font-mono text-emerald-300 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                {isProUser ? "PRO" : "FREE"}
+              </span>
             </div>
           </div>
 
           <div className="flex gap-4">
             <div className="text-center px-6 py-2 border-l border-white/10 hidden lg:block">
-              <span className="block text-[20px] font-black text-white">{analyses.length}</span>
-              <span className="text-[15px] font-mono text-slate-500 uppercase">Análises</span>
+              <span className="block text-[20px] font-black text-white">{analisesCount}</span>
+              <span className="text-[15px] font-mono text-slate-500 uppercase">Analises</span>
             </div>
           </div>
         </div>
@@ -529,10 +729,25 @@ export default function ProfilePage() {
             <div className="bg-gradient-to-br from-cyan-600/20 to-blue-600/20 border border-cyan-500/20 p-6 rounded-[2rem] relative overflow-hidden group">
               <Zap className="absolute -right-4 -bottom-4 w-24 h-24 text-cyan-500/10 group-hover:scale-110 transition-transform duration-700" />
               <h4 className="text-white font-bold mb-1">Upgrade_Tier</h4>
-              <p className="text-xs text-slate-400 mb-4">Acesse analises ilimitadas</p>
-              <button className="w-full py-2 bg-white text-slate-950 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-cyan-400 transition-colors cursor-pointer">
-                Virar Pro
+              <p className="text-xs text-slate-400 mb-4">
+                {isProUser ? "Plano Pro ativo com analises ilimitadas" : "Acesse analises ilimitadas"}
+              </p>
+              <button
+                type="button"
+                onClick={handleOpenUpgradePrompt}
+                disabled={isUpgradingPro || isProUser}
+                className="w-full py-2 bg-white text-slate-950 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-cyan-400 transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {isProUser ? "Plano Pro Ativo" : isUpgradingPro ? "Ativando..." : "Virar Pro"}
               </button>
+
+              {isRefreshingProfile ? (
+                <p className="mt-3 text-[11px] font-mono text-slate-300">Atualizando dados do usuario...</p>
+              ) : null}
+
+              {upgradeMessage ? (
+                <p className="mt-3 text-[11px] font-mono text-cyan-200">{upgradeMessage}</p>
+              ) : null}
             </div>
           </div>
 
