@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEV_URL } from "../../../../lib/upstream";
+import { UPSTREAM_BASE } from "../../../../lib/upstream";
 
 function parseUpstreamResponse(raw: string) {
   if (!raw) {
@@ -25,7 +25,7 @@ export async function GET(
       return NextResponse.json({ message: "Email do usuario e obrigatorio." }, { status: 400 });
     }
 
-    const upstream = await fetch(`${DEV_URL}/api/Auth/user/${encodeURIComponent(email)}`, {
+    const upstream = await fetch(`${UPSTREAM_BASE}/api/Auth/user/${encodeURIComponent(email)}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",

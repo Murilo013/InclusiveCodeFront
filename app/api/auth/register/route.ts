@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEV_URL } from "../../../lib/upstream";
+import { UPSTREAM_BASE } from "../../../lib/upstream";
 
 function parseUpstreamResponse(raw: string) {
   if (!raw) {
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
           : 0,
     };
 
-    const upstream = await fetch(`${DEV_URL}/api/Auth/register`, {
+    const upstream = await fetch(`${UPSTREAM_BASE}/api/Auth/register`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DEV_URL } from '../../lib/upstream';
+import { UPSTREAM_BASE } from '../../lib/upstream';
 
 const HIGH_DEMAND_MESSAGE = 'Modelo com alta demanda, aguarde e tente novamente.';
 
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(`${DEV_URL}/api/analyze`, {
+    const upstream = await fetch(`${UPSTREAM_BASE}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(upstreamBody),

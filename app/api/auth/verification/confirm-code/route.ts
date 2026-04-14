@@ -3,7 +3,7 @@ import {
   clearPendingRegistration,
   verifyPendingRegistrationCode,
 } from "../../../../lib/emailVerification";
-import { DEV_URL } from "../../../../lib/upstream";
+import { UPSTREAM_BASE } from "../../../../lib/upstream";
 
 export const runtime = "nodejs";
 
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: verification.message }, { status: verification.status });
     }
 
-    const upstream = await fetch(`${DEV_URL}/api/Auth/register`, {
+    const upstream = await fetch(`${UPSTREAM_BASE}/api/Auth/register`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

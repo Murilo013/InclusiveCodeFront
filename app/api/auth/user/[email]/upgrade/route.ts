@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEV_URL } from "../../../../../lib/upstream";
+import { UPSTREAM_BASE } from "../../../../../lib/upstream";
 
 function parseUpstreamResponse(raw: string) {
   if (!raw) {
@@ -43,7 +43,7 @@ export async function POST(
     }
 
     const upstream = await fetch(
-      `${DEV_URL}/api/auth/user/${encodeURIComponent(email)}/upgrade`,
+      `${UPSTREAM_BASE}/api/auth/user/${encodeURIComponent(email)}/upgrade`,
       {
         method: "POST",
         headers: {
