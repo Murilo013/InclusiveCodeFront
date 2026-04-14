@@ -4,6 +4,11 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Github, Globe, Shield, Zap } from "lucide-react";
 import Layout from "./Layout";
+import {
+  getStoredAuthUser,
+  incrementStoredAnalisesCount,
+  type AuthUserSession,
+} from "../lib/authUserSession";
 
 const PROGRESS_STEPS = [
   "Validando URL do repositório",
@@ -19,13 +24,22 @@ export default function ScannerHome() {
   const [activeStep, setActiveStep] = useState(0);
   const [apiError, setApiError] = useState<string | null>(null);
   const [isApiErrorHiding, setIsApiErrorHiding] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUserSession | null>(null);
+  const [showProUpsell, setShowProUpsell] = useState(false);
   const router = useRouter();
+
+  const hasReachedFreeLimit = !!authUser && !authUser.pro && authUser.analisesCount >= 5;
 
   React.useEffect(() => {
     try {
-      if (!sessionStorage.getItem("auth_user")) {
+      const storedUser = getStoredAuthUser();
+
+      if (!storedUser || !storedUser.username) {
         router.replace("/login");
+        return;
       }
+
+      setAuthUser(storedUser);
     } catch {
       router.replace("/login");
     }
@@ -90,6 +104,22 @@ export default function ScannerHome() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!repoUrl) return;
+
+    const currentUser = authUser ?? getStoredAuthUser();
+
+    if (!currentUser?.userId) {
+      setApiError("Faca login novamente para iniciar uma nova analise.");
+      router.replace("/login");
+      return;
+    }
+
+    if (!currentUser.pro && currentUser.analisesCount >= 5) {
+      setApiError("Voce atingiu o limite de 5 analises gratuitas. Torne-se Pro para continuar!");
+      setShowProUpsell(true);
+      return;
+    }
+
+    setShowProUpsell(false);
     setIsLoading(true);
 
     try {
@@ -97,12 +127,10 @@ export default function ScannerHome() {
     } catch {}
 
     try {
-      const userId = sessionStorage.getItem("auth_user_id");
-
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: repoUrl, id: userId }),
+        body: JSON.stringify({ url: repoUrl, userId: currentUser.userId }),
       });
       const raw = await res.text();
       let data: Record<string, unknown> = {};
@@ -116,6 +144,10 @@ export default function ScannerHome() {
       }
 
       if (!res.ok) {
+        if (res.status === 400) {
+          setShowProUpsell(true);
+        }
+
         throw new Error(getApiMessage(data, `Status ${res.status}`));
       }
 
@@ -131,12 +163,23 @@ export default function ScannerHome() {
       try {
         sessionStorage.setItem("analysis_result", JSON.stringify(data));
       } catch {}
+
+      const updatedUser = incrementStoredAnalisesCount(1);
+      if (updatedUser) {
+        setAuthUser(updatedUser);
+      }
+
       router.push("/analysis");
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("Erro ao analisar:", error);
       setIsApiErrorHiding(false);
       setApiError(message);
+
+      if (message.toLowerCase().includes("limite") || message.toLowerCase().includes("pro")) {
+        setShowProUpsell(true);
+      }
+
       try {
         sessionStorage.removeItem("analysis_running");
       } catch {}
@@ -154,9 +197,38 @@ export default function ScannerHome() {
           }`}
         >
           <div className="text-sm font-semibold">Erro na analise</div>
-          <p className="mt-1 text-sm text-rose-100 break-words">{apiError.slice(17)}</p>
+          <p className="mt-1 text-sm text-rose-100 break-words">{apiError}</p>
         </div>
       )}
+
+      {showProUpsell ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-2xl border border-cyan-500/30 bg-slate-900 p-6 shadow-2xl">
+            <h3 className="text-lg font-black text-white">Limite gratuito atingido</h3>
+            <p className="mt-3 text-sm text-slate-300">
+              Voce atingiu o limite de 5 analises gratuitas. Torne-se Pro para continuar com
+              analises ilimitadas.
+            </p>
+
+            <div className="mt-6 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => router.push("/profile")}
+                className="cursor-pointer flex-1 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-500 transition-colors"
+              >
+                Virar Pro
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowProUpsell(false)}
+                className="cursor-pointer flex-1 rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/5 transition-colors"
+              >
+                Agora nao
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isLoading && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm px-4">
@@ -249,7 +321,7 @@ export default function ScannerHome() {
 
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || hasReachedFreeLimit}
                 className="cursor-pointer absolute right-2 top-2 bottom-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white px-8 rounded-xl font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.3)] active:scale-95"
               >
                 {isLoading ? (
@@ -262,6 +334,22 @@ export default function ScannerHome() {
                 )}
               </button>
             </div>
+          </div>
+
+          <div className="mt-4 text-center">
+            {authUser?.pro ? (
+              <p className="text-sm text-emerald-300">✨ Analises ilimitadas</p>
+            ) : (
+              <p className="text-sm text-slate-300">
+                Analises realizadas: {authUser?.analisesCount ?? 0} / 5
+              </p>
+            )}
+
+            {hasReachedFreeLimit ? (
+              <p className="mt-2 text-sm text-amber-300">
+                Voce atingiu o limite de 5 analises gratuitas. Torne-se Pro para continuar!
+              </p>
+            ) : null}
           </div>
 
           <div className="mt-4 flex justify-center gap-6 text-[10px] font-mono text-slate-500 uppercase tracking-widest">

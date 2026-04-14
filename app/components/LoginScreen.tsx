@@ -6,6 +6,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import PasswordRecoveryModal from "../components/PasswordRecoveryModal";
 import { signInWithPopup, GithubAuthProvider, getAdditionalUserInfo } from "firebase/auth";
+import { setStoredAuthUser, setStoredAuthUserFromPayload } from "../lib/authUserSession";
 
 function parseApiResponse(raw: string): Record<string, unknown> {
   if (!raw) {
@@ -19,37 +20,11 @@ function parseApiResponse(raw: string): Record<string, unknown> {
   }
 }
 
-function resolveUserIdFromPayload(data: Record<string, unknown>): string | null {
-  if (typeof data.UserId === "number" && data.UserId > 0) {
-    return String(data.UserId);
-  }
-
-  if (typeof data.userId === "number" && data.userId > 0) {
-    return String(data.userId);
-  }
-
-  if (typeof data.id === "number" && data.id > 0) {
-    return String(data.id);
-  }
-
-  if (typeof data.UserId === "string" && data.UserId.trim().length > 0) {
-    return data.UserId.trim();
-  }
-
-  if (typeof data.userId === "string" && data.userId.trim().length > 0) {
-    return data.userId.trim();
-  }
-
-  if (typeof data.id === "string" && data.id.trim().length > 0) {
-    return data.id.trim();
-  }
-
-  return null;
-}
-
 export default function LoginScreen() {
   const router = useRouter();
   const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [awaitingVerification, setAwaitingVerification] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -80,18 +55,89 @@ export default function LoginScreen() {
     const username = String(formData.get("username") ?? "").trim();
     const email = String(formData.get("email") ?? "").trim();
     const password = String(formData.get("password") ?? "");
+    const verificationCode = String(formData.get("verificationCode") ?? "").trim();
 
     try {
-      const response = await fetch(isRegisterMode ? "/api/auth/register" : "/api/auth/login", {
+      if (isRegisterMode) {
+        if (!awaitingVerification) {
+          const response = await fetch("/api/auth/verification/request-code", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ username, email, password }),
+          });
+
+          const raw = await response.text();
+          const data = parseApiResponse(raw);
+
+          if (!response.ok) {
+            const message =
+              typeof data.message === "string" && data.message.trim().length > 0
+                ? data.message
+                : "Falha ao enviar codigo de verificacao.";
+            setError(message);
+            return;
+          }
+
+          const message =
+            typeof data.message === "string" && data.message.trim().length > 0
+              ? data.message
+              : "Codigo de verificacao enviado para o email informado.";
+
+          setVerificationEmail(email.toLowerCase());
+          setAwaitingVerification(true);
+          setSuccessMessage(message);
+          return;
+        }
+
+        if (!verificationCode) {
+          setError("Informe o codigo de verificacao para concluir o cadastro.");
+          return;
+        }
+
+        const response = await fetch("/api/auth/verification/confirm-code", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: verificationEmail || email,
+            code: verificationCode,
+          }),
+        });
+
+        const raw = await response.text();
+        const data = parseApiResponse(raw);
+
+        if (!response.ok) {
+          const message =
+            typeof data.message === "string" && data.message.trim().length > 0
+              ? data.message
+              : "Falha ao confirmar codigo de verificacao.";
+          setError(message);
+          return;
+        }
+
+        const message =
+          typeof data.message === "string" && data.message.trim().length > 0
+            ? data.message
+            : "Usuario registrado com sucesso!";
+
+        setSuccessMessage(message);
+        setIsRegisterMode(false);
+        setAwaitingVerification(false);
+        setVerificationEmail("");
+        form.reset();
+        return;
+      }
+
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(
-          isRegisterMode
-            ? { username, email, password }
-            : { email, password }
-        ),
+        body: JSON.stringify({ email, password }),
       });
 
       const raw = await response.text();
@@ -102,22 +148,8 @@ export default function LoginScreen() {
         const message =
           typeof data.message === "string" && data.message.trim().length > 0
             ? data.message
-            : isRegisterMode
-              ? "Falha ao criar conta. Verifique os dados informados."
-              : "Falha no login. Verifique seu email e senha.";
+            : "Falha no login. Verifique seu email e senha.";
         setError(message);
-        return;
-      }
-
-      if (isRegisterMode) {
-        const message =
-          typeof data.message === "string" && data.message.trim().length > 0
-            ? data.message
-            : "Usuario registrado com sucesso!";
-
-        setSuccessMessage(message);
-        setIsRegisterMode(false);
-        form.reset();
         return;
       }
 
@@ -126,24 +158,20 @@ export default function LoginScreen() {
           ? data.username
           : email;
 
-      const resolvedUserId = resolveUserIdFromPayload(data);
-
-
       try {
-        sessionStorage.setItem("auth_user", resolvedUsername);
-        sessionStorage.setItem("auth_email", email);
-        if (resolvedUserId) {
-          sessionStorage.setItem("auth_user_id", resolvedUserId);
-          sessionStorage.setItem("userId", resolvedUserId);
-          sessionStorage.setItem("UserId", resolvedUserId);
-        }
+        setStoredAuthUserFromPayload(data, {
+          username: resolvedUsername,
+          email,
+        });
       } catch {}
 
       router.push("/scanner");
     } catch {
       setError(
         isRegisterMode
-          ? "Nao foi possivel conectar com a API de cadastro."
+          ? awaitingVerification
+            ? "Nao foi possivel confirmar o codigo de verificacao."
+            : "Nao foi possivel enviar o codigo de verificacao."
           : "Nao foi possivel conectar com a API de login."
       );
     } finally {
@@ -164,7 +192,7 @@ export default function LoginScreen() {
 
     const deterministicPassword = `Gh@${providerUid}#InclusiveCode`;
 
-    const tryLogin = async () => {
+    const tryLogin = async (): Promise<Record<string, unknown> | null> => {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -180,12 +208,12 @@ export default function LoginScreen() {
         return null;
       }
 
-      return resolveUserIdFromPayload(data);
+      return data;
     };
 
-    const existingUserId = await tryLogin();
-    if (existingUserId) {
-      return existingUserId;
+    const existingUserPayload = await tryLogin();
+    if (existingUserPayload) {
+      return existingUserPayload;
     }
 
     const registerResponse = await fetch("/api/auth/register", {
@@ -193,7 +221,13 @@ export default function LoginScreen() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ username, email, password: deterministicPassword }),
+      body: JSON.stringify({
+        username,
+        email,
+        password: deterministicPassword,
+        pro: false,
+        analisesCount: 0,
+      }),
     });
 
     await registerResponse.text();
@@ -208,10 +242,8 @@ export default function LoginScreen() {
       provider.addScope("repo");
       provider.addScope("read:user");
       const result = await signInWithPopup(auth, provider);
-      console.log('usuario', result.user);
 
       const credential = GithubAuthProvider.credentialFromResult(result);
-      console.log('token', credential?.accessToken);
 
       const additionalUserInfo = getAdditionalUserInfo(result);
       const profileLogin =
@@ -224,10 +256,10 @@ export default function LoginScreen() {
           ? profileLogin
           : result.user.displayName || "GitHub User";
 
-      let resolvedBackendUserId: string | null = null;
+      let backendLoginPayload: Record<string, unknown> | null = null;
 
       try {
-        resolvedBackendUserId = await ensureBackendUserForGithub({
+        backendLoginPayload = await ensureBackendUserForGithub({
           username: githubUsername,
           email: result.user.email || "",
           providerUid: result.user.uid,
@@ -236,14 +268,21 @@ export default function LoginScreen() {
         console.warn("Falha ao provisionar conta no backend via GitHub:", provisionError);
       }
 
-      sessionStorage.setItem("auth_user", githubUsername);
-      sessionStorage.setItem("auth_email", result.user.email || "");
+      const storedUser =
+        backendLoginPayload && typeof backendLoginPayload === "object"
+          ? setStoredAuthUserFromPayload(backendLoginPayload, {
+              username: githubUsername,
+              email: result.user.email || "",
+            })
+          : setStoredAuthUser({
+              username: githubUsername,
+              email: result.user.email || "",
+              verificado: true,
+              analisesCount: 0,
+              pro: false,
+            });
 
-      if (resolvedBackendUserId) {
-        sessionStorage.setItem("auth_user_id", resolvedBackendUserId);
-        sessionStorage.setItem("userId", resolvedBackendUserId);
-        sessionStorage.setItem("UserId", resolvedBackendUserId);
-      }
+      const resolvedBackendUserId = storedUser?.userId ?? null;
 
       if (credential?.accessToken) {
         sessionStorage.setItem("github_access_token", credential.accessToken);
@@ -257,7 +296,7 @@ export default function LoginScreen() {
 
       router.push("/scanner");
     } catch (error) {
-      console.log('erro', error);
+      console.log("erro", error);
       setError("Falha no login com GitHub. Tente novamente.");
     }
   };
@@ -302,8 +341,9 @@ export default function LoginScreen() {
                     type="text"
                     name="username"
                     required={isRegisterMode}
+                    disabled={isSubmitting || awaitingVerification}
                     placeholder="seu_usuario"
-                    className="w-full bg-slate-900/50 border border-white/5 rounded-xl py-3.5 pl-12 pr-4 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono text-sm"
+                    className="w-full bg-slate-900/50 border border-white/5 rounded-xl py-3.5 pl-12 pr-4 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -319,8 +359,9 @@ export default function LoginScreen() {
                   type="email"
                   name="email"
                   required
+                  disabled={isSubmitting || (isRegisterMode && awaitingVerification)}
                   placeholder="usuario@email.com"
-                  className="w-full bg-slate-900/50 border border-white/5 rounded-xl py-3.5 pl-12 pr-4 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono text-sm"
+                  className="w-full bg-slate-900/50 border border-white/5 rounded-xl py-3.5 pl-12 pr-4 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -335,11 +376,49 @@ export default function LoginScreen() {
                   type="password"
                   name="password"
                   required
+                  disabled={isSubmitting || (isRegisterMode && awaitingVerification)}
                   placeholder="••••••••"
-                  className="w-full bg-slate-900/50 border border-white/5 rounded-xl py-3.5 pl-12 pr-4 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono text-sm"
+                  className="w-full bg-slate-900/50 border border-white/5 rounded-xl py-3.5 pl-12 pr-4 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
+
+            {isRegisterMode && awaitingVerification ? (
+              <div className="space-y-2">
+                <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest ml-1">
+                  Codigo_Verificacao
+                </label>
+                <div className="relative group">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-600 group-focus-within:text-cyan-400 transition-colors" />
+                  <input
+                    type="text"
+                    name="verificationCode"
+                    inputMode="numeric"
+                    pattern="\d{6}"
+                    minLength={6}
+                    maxLength={6}
+                    required={isRegisterMode && awaitingVerification}
+                    placeholder="000000"
+                    className="w-full bg-slate-900/50 border border-cyan-500/30 rounded-xl py-3.5 pl-12 pr-4 text-white focus:outline-none focus:border-cyan-500/70 focus:ring-1 focus:ring-cyan-500/30 transition-all font-mono text-sm tracking-[0.35em]"
+                  />
+                </div>
+                <p className="text-[10px] font-mono text-slate-500 tracking-wide">
+                  Codigo enviado para {verificationEmail || "seu email"}.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAwaitingVerification(false);
+                    setVerificationEmail("");
+                    setError(null);
+                    setSuccessMessage("Edite os dados e clique em Enviar Codigo novamente.");
+                  }}
+                  className="text-[10px] font-mono text-cyan-500 hover:text-cyan-300 uppercase tracking-widest transition-colors cursor-pointer"
+                >
+                  Alterar dados / reenviar codigo
+                </button>
+              </div>
+            ) : null}
 
             {!isRegisterMode ? (
               <div className="flex justify-end">
@@ -358,7 +437,13 @@ export default function LoginScreen() {
               disabled={isSubmitting}
               className="cursor-pointer w-full bg-cyan-600 hover:bg-cyan-500 disabled:opacity-70 text-white py-4 rounded-xl font-bold uppercase text-xs tracking-[0.2em] shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all active:scale-[0.98]"
             >
-              {isSubmitting ? "Carregando" : isRegisterMode ? "Criar Conta" : "Iniciar Sessao"}
+              {isSubmitting
+                ? "Carregando"
+                : isRegisterMode
+                  ? awaitingVerification
+                    ? "Confirmar Codigo"
+                    : "Enviar Codigo"
+                  : "Iniciar Sessao"}
             </button>
 
             {error ? (
@@ -396,6 +481,8 @@ export default function LoginScreen() {
             type="button"
             onClick={() => {
               setIsRegisterMode((previous) => !previous);
+              setAwaitingVerification(false);
+              setVerificationEmail("");
               setError(null);
               setSuccessMessage(null);
             }}
