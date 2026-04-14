@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { UPSTREAM_BASE,DEV_URL } from "../../../lib/upstream";
+import { DEV_URL } from "../../../lib/upstream";
 
 function parseUpstreamResponse(raw: string) {
   if (!raw) {
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const upstream = await fetch(`${UPSTREAM_BASE}/api/Auth/login`, {
+    const upstream = await fetch(`${DEV_URL}/api/Auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     });
 
     const raw = await upstream.text();
-    
+
     const data = parseUpstreamResponse(raw);
     return NextResponse.json(data, { status: upstream.status });
   } catch (err: unknown) {

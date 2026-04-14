@@ -1,7 +1,8 @@
 "use client";
 import React from 'react';
-import { X, User, Bell, BookOpenText } from 'lucide-react';
+import { X, User, BookOpenText } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { clearStoredAuthUser } from '../lib/authUserSession';
 
 interface SidebarProps {
   open: boolean;
@@ -18,12 +19,8 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
   const handleLogout = () => {
     try {
-      sessionStorage.removeItem("auth_user");
-      sessionStorage.removeItem("auth_email");
+      clearStoredAuthUser();
       sessionStorage.removeItem("auth_token");
-      sessionStorage.removeItem("auth_user_id");
-      sessionStorage.removeItem("userId");
-      sessionStorage.removeItem("UserId");
       sessionStorage.removeItem("github_access_token");
       sessionStorage.removeItem("github_linked_user_id");
       sessionStorage.removeItem("github_username");

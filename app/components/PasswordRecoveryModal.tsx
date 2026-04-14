@@ -55,15 +55,20 @@ export default function PasswordRecoveryModal({ email: initialEmail = "", onClos
       });
 
       const text = await res.text();
-      let data: any = {};
+      let data: Record<string, unknown> = {};
       try {
         data = JSON.parse(text);
       } catch {
         data.message = text;
       }
 
+      const responseMessage =
+        typeof data.message === "string" && data.message.trim().length > 0
+          ? data.message
+          : null;
+
       if (res.status === 200) {
-        setSuccess(data.message || "Senha atualizada com sucesso!");
+        setSuccess(responseMessage || "Senha atualizada com sucesso!");
         setTimeout(() => {
           onClose?.();
         }, 1500);
@@ -71,23 +76,23 @@ export default function PasswordRecoveryModal({ email: initialEmail = "", onClos
       }
 
       if (res.status === 400) {
-        setError(data.message || "Nova senha inválida ou igual à anterior.");
+        setError(responseMessage || "Nova senha invalida ou igual a anterior.");
         return;
       }
 
       if (res.status === 401) {
-        setError(data.message || "Senha antiga incorreta.");
+        setError(responseMessage || "Senha antiga incorreta.");
         return;
       }
 
       if (res.status === 404) {
-        setError(data.message || "Usuário não encontrado.");
+        setError(responseMessage || "Usuario nao encontrado.");
         return;
       }
 
-      setError(data.message || "Erro interno do servidor.");
+      setError(responseMessage || "Erro interno do servidor.");
     } catch {
-      setError("Não foi possível conectar ao servidor.");
+      setError("Nao foi possivel conectar ao servidor.");
     } finally {
       setIsSubmitting(false);
     }

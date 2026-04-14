@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Layout from "../components/Layout";
+import { getStoredAuthUser, incrementStoredAnalisesCount } from "../lib/authUserSession";
 
 type Issue = {
   id: string;
@@ -346,6 +347,7 @@ export default function AnalysisPage() {
   async function fetchAnalysis(url: string) {
     setLoading(true);
     setErrorPopupMessage(null);
+    const currentUser = getStoredAuthUser();
 
     try {
       const res = await fetch("/api/analyze", {
@@ -353,7 +355,10 @@ export default function AnalysisPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({
+          url,
+          userId: currentUser?.userId ?? undefined,
+        }),
       });
 
       const rawData: unknown = await res.json();
@@ -382,6 +387,15 @@ export default function AnalysisPage() {
       console.log("API RESPONSE:", data);
 
       if (!res.ok) {
+        if (res.status === 400) {
+          showErrorPopup(
+            data?.message ||
+              "Limite de analises atingido. Torne-se Pro para continuar com analises ilimitadas."
+          );
+          setLoading(false);
+          return;
+        }
+
         showErrorPopup(data?.error || data?.message || "Erro ao executar analise");
         setLoading(false);
         return;
@@ -389,6 +403,7 @@ export default function AnalysisPage() {
 
       if (data.analysis) {
         setAnalysis(data.analysis);
+        incrementStoredAnalisesCount(1);
       } else {
         showErrorPopup("Resposta da API fora do formato esperado.");
       }
