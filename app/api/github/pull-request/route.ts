@@ -428,7 +428,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         title:
           body.title?.trim() ||
-          `chore(a11y): aplicar correções sugeridas (${new Date().toISOString().slice(0, 10)})`,
+          `InclusiveCode: aplicar correções sugeridas (${new Date().toISOString().slice(0, 10)})`,
         head: workingOwner === owner && workingRepo === repo ? branchName : `${workingOwner}:${branchName}`,
         base: resolvedBaseBranch,
         body: buildPullRequestBody(body.body, issues),

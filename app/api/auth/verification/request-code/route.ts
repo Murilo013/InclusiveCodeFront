@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    console.error("[InclusiveCode] Falha ao enviar codigo de verificacao:", err);
 
     return NextResponse.json(
       { message: "Falha ao enviar codigo de verificacao.", detail: message },

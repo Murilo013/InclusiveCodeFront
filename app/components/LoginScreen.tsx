@@ -6,7 +6,10 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import PasswordRecoveryModal from "../components/PasswordRecoveryModal";
 import { signInWithPopup, GithubAuthProvider, getAdditionalUserInfo } from "firebase/auth";
-import { setStoredAuthUser, setStoredAuthUserFromPayload } from "../lib/authUserSession";
+import {
+  setStoredAuthUser,
+  setStoredAuthUserFromPayload,
+} from "../lib/authUserSession";
 
 function parseApiResponse(raw: string): Record<string, unknown> {
   if (!raw) {
@@ -18,6 +21,75 @@ function parseApiResponse(raw: string): Record<string, unknown> {
   } catch {
     return { message: raw };
   }
+}
+
+type GithubEmailEntry = {
+  email?: string;
+  primary?: boolean;
+  verified?: boolean;
+};
+
+async function fetchGithubPrimaryEmail(accessToken: string) {
+  const response = await fetch("https://api.github.com/user/emails", {
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = (await response.json()) as GithubEmailEntry[];
+  if (!Array.isArray(data)) {
+    return null;
+  }
+
+  const primary = data.find((item) => item?.primary && item?.verified && item?.email);
+  if (primary?.email) {
+    return primary.email;
+  }
+
+  const verified = data.find((item) => item?.verified && item?.email);
+  if (verified?.email) {
+    return verified.email;
+  }
+
+  const first = data.find((item) => item?.email);
+  return first?.email ?? null;
+}
+
+async function resolveGithubEmail(initialEmail: string, accessToken?: string | null) {
+  const direct = initialEmail.trim().toLowerCase();
+  if (direct) {
+    return direct;
+  }
+
+  if (!accessToken) {
+    return null;
+  }
+
+  const fetched = await fetchGithubPrimaryEmail(accessToken);
+  return fetched ? fetched.trim().toLowerCase() : null;
+}
+
+async function fetchBackendUserByEmail(email: string) {
+  const response = await fetch(`/api/auth/user/${encodeURIComponent(email)}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  const raw = await response.text();
+  const data = parseApiResponse(raw);
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return data;
 }
 
 export default function LoginScreen() {
@@ -241,6 +313,7 @@ export default function LoginScreen() {
       const provider = new GithubAuthProvider();
       provider.addScope("repo");
       provider.addScope("read:user");
+      provider.addScope("user:email");
       const result = await signInWithPopup(auth, provider);
 
       const credential = GithubAuthProvider.credentialFromResult(result);
@@ -256,31 +329,57 @@ export default function LoginScreen() {
           ? profileLogin
           : result.user.displayName || "GitHub User";
 
+      const resolvedEmail = await resolveGithubEmail(
+        result.user.email || "",
+        credential?.accessToken ?? null
+      );
+
+      if (!resolvedEmail) {
+        setError(
+          "Nao foi possivel obter seu email do GitHub. Verifique as permissoes e tente novamente."
+        );
+        return;
+      }
+
       let backendLoginPayload: Record<string, unknown> | null = null;
 
       try {
         backendLoginPayload = await ensureBackendUserForGithub({
           username: githubUsername,
-          email: result.user.email || "",
+          email: resolvedEmail,
           providerUid: result.user.uid,
         });
       } catch (provisionError) {
         console.warn("Falha ao provisionar conta no backend via GitHub:", provisionError);
       }
 
-      const storedUser =
+      if (!backendLoginPayload && resolvedEmail) {
+        backendLoginPayload = await fetchBackendUserByEmail(resolvedEmail);
+      }
+
+      let storedUser =
         backendLoginPayload && typeof backendLoginPayload === "object"
           ? setStoredAuthUserFromPayload(backendLoginPayload, {
               username: githubUsername,
-              email: result.user.email || "",
+              email: resolvedEmail,
             })
           : setStoredAuthUser({
               username: githubUsername,
-              email: result.user.email || "",
+              email: resolvedEmail,
               verificado: true,
               analisesCount: 0,
               pro: false,
             });
+
+      if (!storedUser?.userId && resolvedEmail) {
+        const refreshedPayload = await fetchBackendUserByEmail(resolvedEmail);
+        if (refreshedPayload && typeof refreshedPayload === "object") {
+          storedUser = setStoredAuthUserFromPayload(refreshedPayload, {
+            username: githubUsername,
+            email: resolvedEmail,
+          });
+        }
+      }
 
       const resolvedBackendUserId = storedUser?.userId ?? null;
 

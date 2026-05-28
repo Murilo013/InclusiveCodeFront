@@ -8,6 +8,7 @@ import {
   getStoredAuthUser,
   incrementStoredAnalisesCount,
   type AuthUserSession,
+  setStoredAuthUserFromPayload,
 } from "../lib/authUserSession";
 
 const PROGRESS_STEPS = [
@@ -34,7 +35,7 @@ export default function ScannerHome() {
     try {
       const storedUser = getStoredAuthUser();
 
-      if (!storedUser || !storedUser.username) {
+      if (!storedUser || (!storedUser.username && !storedUser.email && !storedUser.userId)) {
         router.replace("/login");
         return;
       }
@@ -101,16 +102,59 @@ export default function ScannerHome() {
     };
   }, [apiError]);
 
+  const refreshUserByEmail = async (email: string, fallbackUsername?: string) => {
+    if (!email) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(`/api/auth/user/${encodeURIComponent(email)}`, {
+        cache: "no-store",
+      });
+
+      const raw = await response.text();
+      let data: Record<string, unknown> = {};
+
+      if (raw) {
+        try {
+          const parsed: unknown = JSON.parse(raw);
+          data = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+        } catch {
+          data = {};
+        }
+      }
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return setStoredAuthUserFromPayload(data, {
+        email,
+        username: fallbackUsername,
+      });
+    } catch {
+      return null;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!repoUrl) return;
 
-    const currentUser = authUser ?? getStoredAuthUser();
+    let currentUser = authUser ?? getStoredAuthUser();
 
-    if (!currentUser?.userId) {
+    if (!currentUser?.username && !currentUser?.email) {
       setApiError("Faca login novamente para iniciar uma nova analise.");
       router.replace("/login");
       return;
+    }
+
+    if (!currentUser?.userId && currentUser?.email) {
+      const refreshed = await refreshUserByEmail(currentUser.email, currentUser.username);
+      if (refreshed) {
+        setAuthUser(refreshed);
+        currentUser = refreshed;
+      }
     }
 
     if (!currentUser.pro && currentUser.analisesCount >= 5) {
@@ -130,7 +174,12 @@ export default function ScannerHome() {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: repoUrl, userId: currentUser.userId }),
+        body: JSON.stringify({
+          url: repoUrl,
+          userId: currentUser?.userId ?? undefined,
+          email: currentUser?.email ?? undefined,
+          username: currentUser?.username ?? undefined,
+        }),
       });
       const raw = await res.text();
       let data: Record<string, unknown> = {};
