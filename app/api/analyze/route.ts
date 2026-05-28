@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { UPSTREAM_BASE } from '../../lib/upstream';
+import { resolveUserIdFromPayload } from '../../lib/authUserSession';
+
+function getApiBaseUrl(): string {
+  const value = process.env.API_BASE_URL?.trim();
+
+  if (!value) {
+    throw new Error('API_BASE_URL is not configured.');
+  }
+
+  return value;
+}
 
 const HIGH_DEMAND_MESSAGE = 'Modelo com alta demanda, aguarde e tente novamente.';
 
@@ -39,6 +49,54 @@ function isHighDemandError(status: number, message: string): boolean {
   return hints.some((hint) => normalized.includes(hint));
 }
 
+function parseUpstreamResponse(raw: string): Record<string, unknown> {
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return { message: raw } as Record<string, unknown>;
+  }
+}
+
+function extractEmailFromBody(body: Record<string, unknown>): string | null {
+  const candidates = [body.email, body.userEmail, body.usuarioEmail, body.mail];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate.trim().toLowerCase();
+    }
+  }
+
+  return null;
+}
+
+async function resolveUserIdByEmail(email: string): Promise<string | null> {
+  try {
+    const upstream = await fetch(
+      `${getApiBaseUrl()}/api/Auth/user/${encodeURIComponent(email)}`,
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+      }
+    );
+
+    const raw = await upstream.text();
+    const data = parseUpstreamResponse(raw);
+
+    if (!upstream.ok) {
+      return null;
+    }
+
+    return resolveUserIdFromPayload(data);
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as Record<string, unknown>;
 
@@ -48,14 +106,26 @@ export async function POST(req: NextRequest) {
   const normalizedHeaderUserId =
     headerUserId && headerUserId.trim().length > 0 ? headerUserId.trim() : null;
   const normalizedBodyUserId =
-    (typeof bodyUserId === 'string' && bodyUserId.trim().length > 0) || typeof bodyUserId === 'number'
+    (typeof bodyUserId === 'string' && bodyUserId.trim().length > 0) ||
+    typeof bodyUserId === 'number'
       ? bodyUserId
       : null;
 
   const upstreamBody: Record<string, unknown> = { ...body };
 
-  if (normalizedHeaderUserId || normalizedBodyUserId !== null) {
-    const resolvedUserId = normalizedHeaderUserId ?? normalizedBodyUserId;
+  let resolvedUserId: string | number | null = normalizedHeaderUserId ?? normalizedBodyUserId;
+
+  if (!resolvedUserId) {
+    const email = extractEmailFromBody(body);
+    if (email) {
+      const fetchedUserId = await resolveUserIdByEmail(email);
+      if (fetchedUserId) {
+        resolvedUserId = fetchedUserId;
+      }
+    }
+  }
+
+  if (resolvedUserId !== null) {
     upstreamBody.userId = resolvedUserId;
     upstreamBody.id = resolvedUserId;
   } else {
@@ -64,7 +134,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(`${UPSTREAM_BASE}/api/analyze`, {
+    const upstream = await fetch(`${getApiBaseUrl()}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(upstreamBody),

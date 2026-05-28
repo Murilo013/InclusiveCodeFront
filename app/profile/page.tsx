@@ -321,9 +321,12 @@ export default function ProfilePage() {
     }
   };
 
-  const refreshUserProfile = async (targetEmail: string, fallbackUsername?: string) => {
+  const refreshUserProfile = async (
+    targetEmail: string,
+    fallbackUsername?: string
+  ): Promise<AuthUserSession | null> => {
     if (!targetEmail) {
-      return;
+      return null;
     }
 
     setIsRefreshingProfile(true);
@@ -336,7 +339,7 @@ export default function ProfilePage() {
       const data = parseRawResponse(raw);
 
       if (!response.ok) {
-        return;
+        return null;
       }
 
       const updated = setStoredAuthUserFromPayload(data, {
@@ -346,12 +349,16 @@ export default function ProfilePage() {
 
       if (updated) {
         applyUserState(updated);
+        return updated;
       }
     } catch {
       // Keep current profile snapshot if refresh fails.
+      return null;
     } finally {
       setIsRefreshingProfile(false);
     }
+
+    return null;
   };
 
   const handleUpgradeToPro = async (code: string) => {
@@ -445,11 +452,6 @@ export default function ProfilePage() {
     try {
       const storedUserId = getStoredAuthUser()?.userId;
 
-      if (!storedUserId) {
-        setGithubLinkMessage("Faca login com sua conta normal antes de conectar o GitHub.");
-        return;
-      }
-
       setIsLinkingGithub(true);
 
       const { auth } = await import("../../lib/firebase");
@@ -493,90 +495,101 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
-    try {
-      const storedUser = getStoredAuthUser();
-      const storedUserId = storedUser?.userId ?? "";
+    const bootstrapProfile = async () => {
+      try {
+        const storedUser = getStoredAuthUser();
 
-      if (!storedUser?.username) {
+        if (!storedUser || (!storedUser.username && !storedUser.email && !storedUser.userId)) {
+          router.replace("/login");
+          return;
+        }
+
+        applyUserState(storedUser);
+
+        let effectiveUser = storedUser;
+
+        if (storedUser.email) {
+          const refreshed = await refreshUserProfile(storedUser.email, storedUser.username);
+          if (refreshed) {
+            effectiveUser = refreshed;
+          }
+        }
+
+        const storedUserId = effectiveUser?.userId ?? "";
+        const githubToken = sessionStorage.getItem("github_access_token");
+        const linkedUserId = sessionStorage.getItem("github_linked_user_id");
+        const storedGithubUsername = sessionStorage.getItem("github_username") ?? "";
+
+        const hasLinkedGithubForCurrentUser =
+          !!githubToken && !!storedUserId && linkedUserId === storedUserId;
+        const hasGithubSessionFromDirectLogin = !!githubToken && !storedUserId;
+
+        if (hasLinkedGithubForCurrentUser || hasGithubSessionFromDirectLogin) {
+          setIsGithubLinked(true);
+          setGithubUsername(storedGithubUsername || effectiveUser.username);
+        } else {
+          setIsGithubLinked(false);
+          setGithubUsername("");
+        }
+
+        // Fetch analyses history
+        if (storedUserId) {
+          setIsLoadingAnalyses(true);
+          fetch(`/api/analyze/history?userId=${storedUserId}`)
+            .then((res) => res.json())
+            .then((data) => {
+              const source: unknown[] = Array.isArray(data)
+                ? data
+                : data.analyses && Array.isArray(data.analyses)
+                  ? data.analyses
+                  : [];
+
+              const normalized = source
+                .filter((item: unknown): item is Record<string, unknown> =>
+                  !!item && typeof item === "object"
+                )
+                .map((item: Record<string, unknown>) => ({
+                  id:
+                    typeof item.id === "string" || typeof item.id === "number"
+                      ? String(item.id)
+                      : typeof item.Id === "string" || typeof item.Id === "number"
+                        ? String(item.Id)
+                        : undefined,
+                  repoUrl:
+                    typeof item.repoUrl === "string"
+                      ? item.repoUrl
+                      : typeof item.RepoUrl === "string"
+                        ? item.RepoUrl
+                        : undefined,
+                  createdAt:
+                    typeof item.createdAt === "string"
+                      ? item.createdAt
+                      : typeof item.CreatedAt === "string"
+                        ? item.CreatedAt
+                        : undefined,
+                  rawJson:
+                    typeof item.rawJson === "string"
+                      ? item.rawJson
+                      : typeof item.RawJson === "string"
+                        ? item.RawJson
+                        : undefined,
+                  score: parseScore(item),
+                  scoreLabel: parseScoreLabel(item),
+                }));
+
+              setAnalyses(normalized);
+            })
+            .catch((err) => console.error("Erro ao buscar histórico:", err))
+            .finally(() => setIsLoadingAnalyses(false));
+        } else {
+          setAnalyses([]);
+        }
+      } catch {
         router.replace("/login");
-        return;
       }
+    };
 
-      applyUserState(storedUser);
-
-      if (storedUser.email) {
-        void refreshUserProfile(storedUser.email, storedUser.username);
-      }
-
-      const githubToken = sessionStorage.getItem("github_access_token");
-      const linkedUserId = sessionStorage.getItem("github_linked_user_id");
-      const storedGithubUsername = sessionStorage.getItem("github_username") ?? "";
-
-      const hasLinkedGithubForCurrentUser =
-        !!githubToken && !!storedUserId && linkedUserId === storedUserId;
-      const hasGithubSessionFromDirectLogin = !!githubToken && !storedUserId;
-
-      setIsDirectGithubLogin(hasGithubSessionFromDirectLogin);
-
-      if (hasLinkedGithubForCurrentUser || hasGithubSessionFromDirectLogin) {
-        setIsGithubLinked(true);
-        setGithubUsername(storedGithubUsername || storedUser.username);
-      } else {
-        setIsGithubLinked(false);
-        setGithubUsername("");
-      }
-
-      // Fetch analyses history
-      if (storedUserId) {
-        setIsLoadingAnalyses(true);
-        fetch(`/api/analyze/history?userId=${storedUserId}`)
-          .then(res => res.json())
-          .then(data => {
-            const source: unknown[] = Array.isArray(data)
-              ? data
-              : data.analyses && Array.isArray(data.analyses)
-                ? data.analyses
-                : [];
-
-            const normalized = source
-              .filter((item: unknown): item is Record<string, unknown> => !!item && typeof item === "object")
-              .map((item: Record<string, unknown>) => ({
-                id:
-                  typeof item.id === "string" || typeof item.id === "number"
-                    ? String(item.id)
-                    : typeof item.Id === "string" || typeof item.Id === "number"
-                    ? String(item.Id)
-                    : undefined,
-                repoUrl:
-                  typeof item.repoUrl === "string"
-                    ? item.repoUrl
-                    : typeof item.RepoUrl === "string"
-                    ? item.RepoUrl
-                    : undefined,
-                createdAt:
-                  typeof item.createdAt === "string"
-                    ? item.createdAt
-                    : typeof item.CreatedAt === "string"
-                    ? item.CreatedAt
-                    : undefined,
-                rawJson:
-                  typeof item.rawJson === "string"
-                    ? item.rawJson
-                    : typeof item.RawJson === "string"
-                    ? item.RawJson
-                    : undefined,
-                score: parseScore(item),
-                scoreLabel: parseScoreLabel(item),
-              }));
-
-            setAnalyses(normalized);
-          })
-          .catch(err => console.error("Erro ao buscar histórico:", err))
-          .finally(() => setIsLoadingAnalyses(false));
-      }
-    } catch {
-      router.replace("/login");
-    }
+    void bootstrapProfile();
   }, [router]);
 
   useEffect(() => {

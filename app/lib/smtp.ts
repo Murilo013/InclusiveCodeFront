@@ -11,10 +11,18 @@ function shouldBypassSmtp(): boolean {
   return (process.env.EMAIL_VERIFICATION_BYPASS_SMTP ?? "false").toLowerCase() === "true";
 }
 
+function normalizeValue(value: string | undefined): string {
+  return (value ?? "").trim();
+}
+
+function normalizePassword(value: string | undefined): string {
+  return normalizeValue(value).replace(/\s+/g, "");
+}
+
 function createTransporter() {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const host = normalizeValue(process.env.SMTP_HOST);
+  const user = normalizeValue(process.env.SMTP_USER);
+  const pass = normalizePassword(process.env.SMTP_PASS);
 
   if (!host || !user || !pass) {
     throw new Error("Variaveis SMTP_HOST, SMTP_USER e SMTP_PASS sao obrigatorias.");
@@ -38,7 +46,7 @@ export async function sendVerificationEmail(email: string, code: string): Promis
   }
 
   const transporter = createTransporter();
-  const from = process.env.SMTP_FROM ?? process.env.SMTP_USER;
+  const from = normalizeValue(process.env.SMTP_FROM ?? process.env.SMTP_USER);
 
   if (!from) {
     throw new Error("Variavel SMTP_FROM ou SMTP_USER obrigatoria para envio.");

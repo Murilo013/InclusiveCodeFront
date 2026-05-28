@@ -358,6 +358,8 @@ export default function AnalysisPage() {
         body: JSON.stringify({
           url,
           userId: currentUser?.userId ?? undefined,
+          email: currentUser?.email ?? undefined,
+          username: currentUser?.username ?? undefined,
         }),
       });
 
@@ -456,15 +458,15 @@ export default function AnalysisPage() {
       return;
     }
 
-    if (!currentUserId) {
-      showErrorPopup("Faca login com sua conta normal para criar Pull Request.");
-      return;
-    }
+    // if (!currentUserId) {
+    //   showErrorPopup("Faca login com sua conta normal para criar Pull Request.");
+    //   return;
+    // }
 
-    if (!linkedGithubUserId || linkedGithubUserId !== currentUserId) {
-      showErrorPopup("Conecte sua conta GitHub no perfil para vincular com sua conta atual.");
-      return;
-    }
+    // if (!linkedGithubUserId || linkedGithubUserId !== currentUserId) {
+    //   showErrorPopup("Conecte sua conta GitHub no perfil para vincular com sua conta atual.");
+    //   return;
+    // }
 
     setIsCreatingPullRequest(true);
     setPullRequestMessage(null);
@@ -479,7 +481,7 @@ export default function AnalysisPage() {
         },
         body: JSON.stringify({
           repoUrl,
-          title: `chore(a11y): aplicar correcoes sugeridas (${new Date().toISOString().slice(0, 10)})`,
+          title: `InclusiveCode: aplicar correcoes sugeridas (${new Date().toISOString().slice(0, 10)})`,
           issues: issuesWithImprovement,
         }),
       });

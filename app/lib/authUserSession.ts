@@ -59,16 +59,84 @@ function parseNonNegativeInt(value: unknown): number | null {
   return null;
 }
 
-export function resolveUserIdFromPayload(data: Record<string, unknown>): string | null {
-  const candidates = [data.UserId, data.userId, data.id, data.user_id];
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-  for (const candidate of candidates) {
-    if (typeof candidate === "number" && candidate > 0) {
-      return String(candidate);
+function collectUserSources(data: Record<string, unknown>): Record<string, unknown>[] {
+  const sources: Record<string, unknown>[] = [];
+  const seen = new Set<Record<string, unknown>>();
+  const nestedKeys = [
+    "user",
+    "usuario",
+    "data",
+    "result",
+    "payload",
+    "profile",
+    "account",
+    "userData",
+    "usuarioData",
+  ];
+
+  const enqueue = (value: unknown) => {
+    if (!isRecord(value)) {
+      return;
     }
 
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      return candidate.trim();
+    if (seen.has(value)) {
+      return;
+    }
+
+    sources.push(value);
+    seen.add(value);
+  };
+
+  enqueue(data);
+
+  for (let index = 0; index < sources.length; index += 1) {
+    const source = sources[index];
+    nestedKeys.forEach((key) => enqueue(source[key]));
+  }
+
+  return sources;
+}
+
+function pickValue(sources: Record<string, unknown>[], keys: string[]) {
+  for (const source of sources) {
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        return source[key];
+      }
+    }
+  }
+
+  return undefined;
+}
+
+export function resolveUserIdFromPayload(data: Record<string, unknown>): string | null {
+  const sources = collectUserSources(data);
+  const keys = [
+    "UserId",
+    "userId",
+    "id",
+    "user_id",
+    "usuarioId",
+    "idUsuario",
+    "IdUsuario",
+    "userID",
+  ];
+
+  for (const source of sources) {
+    for (const key of keys) {
+      const candidate = source[key];
+
+      if (typeof candidate === "number" && candidate > 0) {
+        return String(candidate);
+      }
+
+      if (typeof candidate === "string" && candidate.trim().length > 0) {
+        return candidate.trim();
+      }
     }
   }
 
@@ -79,27 +147,43 @@ export function normalizeAuthUserFromPayload(
   data: Record<string, unknown>,
   fallback?: { username?: string; email?: string }
 ): AuthUserSession {
+  const sources = collectUserSources(data);
+
   const usernameCandidate =
-    (typeof data.username === "string" && data.username.trim()) ||
-    (typeof data.nome === "string" && data.nome.trim()) ||
+    (typeof pickValue(sources, ["username", "nome", "name", "login", "userName", "UserName"]) ===
+      "string" &&
+      String(pickValue(sources, ["username", "nome", "name", "login", "userName", "UserName"]))
+        .trim()) ||
     (typeof fallback?.username === "string" && fallback.username.trim()) ||
     "";
 
   const emailCandidate =
-    (typeof data.email === "string" && data.email.trim()) ||
+    (typeof pickValue(sources, ["email", "Email", "mail", "userEmail"]) === "string" &&
+      String(pickValue(sources, ["email", "Email", "mail", "userEmail"]))
+        .trim()) ||
     (typeof fallback?.email === "string" && fallback.email.trim()) ||
     "";
 
-  const verifiedCandidate =
-    parseBoolean(data.verificado) ?? parseBoolean(data.Verificado) ?? parseBoolean(data.verified);
+  const verifiedCandidate = parseBoolean(
+    pickValue(sources, ["verificado", "Verificado", "verified", "isVerified", "emailVerified"])
+  );
 
-  const analysesCountCandidate =
-    parseNonNegativeInt(data.analisesCount) ??
-    parseNonNegativeInt(data.AnalisesCount) ??
-    parseNonNegativeInt(data.analysesCount) ??
-    parseNonNegativeInt(data.analysisCount);
+  const analysesCountCandidate = parseNonNegativeInt(
+    pickValue(sources, [
+      "analisesCount",
+      "AnalisesCount",
+      "analysesCount",
+      "analysisCount",
+      "analiseCount",
+      "analysis_count",
+      "analises_count",
+    ])
+  );
 
-  const proCandidate = parseBoolean(data.pro) ?? parseBoolean(data.Pro) ?? false;
+  const proCandidate =
+    parseBoolean(
+      pickValue(sources, ["pro", "Pro", "isPro", "planoPro", "planPro", "premium"])
+    ) ?? false;
 
   return {
     username: usernameCandidate,
