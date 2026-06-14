@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEV_URL } from "../../../../../lib/upstream";
+
+function getApiBaseUrl(): string {
+  const value = process.env.API_BASE_URL?.trim();
+
+  if (!value) {
+    throw new Error("API_BASE_URL is not configured.");
+  }
+
+  return value;
+}
 
 function parseUpstreamResponse(raw: string) {
   if (!raw) {
@@ -43,7 +52,7 @@ export async function POST(
     }
 
     const upstream = await fetch(
-      `${DEV_URL}/api/auth/user/${encodeURIComponent(email)}/upgrade`,
+      `${getApiBaseUrl()}/api/auth/user/${encodeURIComponent(email)}/upgrade`,
       {
         method: "POST",
         headers: {

@@ -3,7 +3,16 @@ import {
   clearPendingRegistration,
   verifyPendingRegistrationCode,
 } from "../../../../lib/emailVerification";
-import { DEV_URL } from "../../../../lib/upstream";
+
+function getApiBaseUrl(): string {
+  const value = process.env.API_BASE_URL?.trim();
+
+  if (!value) {
+    throw new Error("API_BASE_URL is not configured.");
+  }
+
+  return value;
+}
 
 export const runtime = "nodejs";
 
@@ -38,7 +47,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: verification.message }, { status: verification.status });
     }
 
-    const upstream = await fetch(`${DEV_URL}/api/Auth/register`, {
+    const upstream = await fetch(`${getApiBaseUrl()}/api/Auth/register`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

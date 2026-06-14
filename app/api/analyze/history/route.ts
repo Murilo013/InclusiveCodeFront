@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DEV_URL } from '../../../lib/upstream';
+
+function getApiBaseUrl(): string {
+  const value = process.env.API_BASE_URL?.trim();
+
+  if (!value) {
+    throw new Error('API_BASE_URL is not configured.');
+  }
+
+  return value;
+}
 
 function parseUpstreamResponse(raw: string): Record<string, unknown> | unknown[] {
   if (!raw) {
@@ -23,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const upstream = await fetch(
-      `${DEV_URL}/api/analyze/history/me?userId=${encodeURIComponent(userId)}`,
+      `${getApiBaseUrl()}/api/analyze/history/me?userId=${encodeURIComponent(userId)}`,
       {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },

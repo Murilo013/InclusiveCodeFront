@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DEV_URL } from '../../lib/upstream';
 import { resolveUserIdFromPayload } from '../../lib/authUserSession';
+
+function getApiBaseUrl(): string {
+  const value = process.env.API_BASE_URL?.trim();
+
+  if (!value) {
+    throw new Error('API_BASE_URL is not configured.');
+  }
+
+  return value;
+}
 
 const HIGH_DEMAND_MESSAGE = 'Modelo com alta demanda, aguarde e tente novamente.';
 
@@ -67,7 +76,7 @@ function extractEmailFromBody(body: Record<string, unknown>): string | null {
 async function resolveUserIdByEmail(email: string): Promise<string | null> {
   try {
     const upstream = await fetch(
-      `${DEV_URL}/api/Auth/user/${encodeURIComponent(email)}`,
+      `${getApiBaseUrl()}/api/Auth/user/${encodeURIComponent(email)}`,
       {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
@@ -125,7 +134,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(`${DEV_URL}/api/analyze`, {
+    const upstream = await fetch(`${getApiBaseUrl()}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(upstreamBody),

@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DEV_URL } from "../../../../lib/upstream";
+
+function getApiBaseUrl(): string {
+  const value = process.env.API_BASE_URL?.trim();
+
+  if (!value) {
+    throw new Error("API_BASE_URL is not configured.");
+  }
+
+  return value;
+}
 
 function parseUpstreamResponse(raw: string) {
   if (!raw) {
@@ -25,7 +34,7 @@ export async function GET(
       return NextResponse.json({ message: "Email do usuario e obrigatorio." }, { status: 400 });
     }
 
-    const upstream = await fetch(`${DEV_URL}/api/Auth/user/${encodeURIComponent(email)}`, {
+    const upstream = await fetch(`${getApiBaseUrl()}/api/Auth/user/${encodeURIComponent(email)}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
