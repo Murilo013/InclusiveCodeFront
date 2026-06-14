@@ -626,10 +626,7 @@ export default function AnalysisPage() {
                   className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 absolute left-1/2 -translate-x-1/2 mt-2 w-150 bg-slate-800 text-sm text-slate-200 p-3 rounded shadow-lg z-50 break-words ml-36"
                 >
                   A pontuação de acessibilidade é calculada com base nos problemas encontrados no código.
-                  A pontuação e a classificação são fornecidas diretamente pelo backend.
 
-                  <br /><br />
-                  O frontend apenas exibe os valores retornados na análise.
                 </div>
               </div>
 

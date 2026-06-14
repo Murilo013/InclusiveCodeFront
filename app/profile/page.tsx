@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import PasswordRecoveryModal from "../components/PasswordRecoveryModal";
 import {
@@ -22,6 +22,15 @@ import {
 
 type ScoreRingProps = {
   score?: number;
+};
+
+type AnalysisLog = {
+  id?: string;
+  repoUrl?: string;
+  createdAt?: string;
+  rawJson?: string;
+  score?: number;
+  scoreLabel?: string;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -159,7 +168,7 @@ export default function ProfilePage() {
   const [email, setEmail] = useState("");
   const [showRecoveryNotice, setShowRecoveryNotice] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
-  const [analyses, setAnalyses] = useState<Array<{ id?: string; repoUrl?: string; createdAt?: string; rawJson?: string; score?: number; scoreLabel?: string }>>([]);
+  const [analyses, setAnalyses] = useState<AnalysisLog[]>([]);
   const [isLoadingAnalyses, setIsLoadingAnalyses] = useState(false);
   const [isLinkingGithub, setIsLinkingGithub] = useState(false);
   const [isGithubLinked, setIsGithubLinked] = useState(false);
@@ -172,6 +181,24 @@ export default function ProfilePage() {
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
   const [showUpgradeCodePrompt, setShowUpgradeCodePrompt] = useState(false);
   const [upgradeCode, setUpgradeCode] = useState("");
+
+  const resolveHistoryUserId = useCallback((user?: AuthUserSession | null) => {
+    const candidates = [
+      user?.userId,
+      typeof window !== "undefined" ? sessionStorage.getItem("auth_user_id") : null,
+      typeof window !== "undefined" ? sessionStorage.getItem("userId") : null,
+      typeof window !== "undefined" ? sessionStorage.getItem("UserId") : null,
+      typeof window !== "undefined" ? sessionStorage.getItem("github_linked_user_id") : null,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim().length > 0) {
+        return candidate.trim();
+      }
+    }
+
+    return "";
+  }, []);
 
   const parseScore = (item: Record<string, unknown>) => {
     if (typeof item.score === "number") {
@@ -260,6 +287,84 @@ export default function ProfilePage() {
 
     return undefined;
   };
+
+  const normalizeAnalysesHistory = useCallback(
+    (data: Record<string, unknown> | unknown[]): AnalysisLog[] => {
+      const source: unknown[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data.analyses)
+          ? data.analyses
+          : [];
+
+      return source
+        .filter((item: unknown): item is Record<string, unknown> =>
+          !!item && typeof item === "object"
+        )
+        .map((item: Record<string, unknown>) => ({
+          id:
+            typeof item.id === "string" || typeof item.id === "number"
+              ? String(item.id)
+              : typeof item.Id === "string" || typeof item.Id === "number"
+                ? String(item.Id)
+                : undefined,
+          repoUrl:
+            typeof item.repoUrl === "string"
+              ? item.repoUrl
+              : typeof item.RepoUrl === "string"
+                ? item.RepoUrl
+                : undefined,
+          createdAt:
+            typeof item.createdAt === "string"
+              ? item.createdAt
+              : typeof item.CreatedAt === "string"
+                ? item.CreatedAt
+                : undefined,
+          rawJson:
+            typeof item.rawJson === "string"
+              ? item.rawJson
+              : typeof item.RawJson === "string"
+                ? item.RawJson
+                : undefined,
+          score: parseScore(item),
+          scoreLabel: parseScoreLabel(item),
+        }));
+    },
+    []
+  );
+
+  const loadAnalysesHistory = useCallback(
+    async (userId?: string | null) => {
+      const normalizedUserId = userId?.trim();
+
+      if (!normalizedUserId) {
+        setAnalyses([]);
+        return;
+      }
+
+      setIsLoadingAnalyses(true);
+
+      try {
+        const response = await fetch(
+          `/api/analyze/history?userId=${encodeURIComponent(normalizedUserId)}`,
+          { cache: "no-store" }
+        );
+        const data = (await response.json()) as Record<string, unknown> | unknown[];
+
+        if (!response.ok) {
+          setAnalyses([]);
+          return;
+        }
+
+        setAnalyses(normalizeAnalysesHistory(data));
+      } catch (err) {
+        console.error("Erro ao buscar histórico:", err);
+        setAnalyses([]);
+      } finally {
+        setIsLoadingAnalyses(false);
+      }
+    },
+    [normalizeAnalysesHistory]
+  );
 
   const formatDateMinusThreeHours = (value?: string) => {
     if (!value) {
@@ -449,7 +554,7 @@ export default function ProfilePage() {
     setGithubLinkMessage(null);
 
     try {
-      const storedUserId = getStoredAuthUser()?.userId;
+      const storedUserId = getStoredAuthUser()?.userId ?? "";
 
       setIsLinkingGithub(true);
 
@@ -504,17 +609,26 @@ export default function ProfilePage() {
         }
 
         applyUserState(storedUser);
+        const initialHistoryUserId = resolveHistoryUserId(storedUser);
+        void loadAnalysesHistory(initialHistoryUserId);
 
         let effectiveUser = storedUser;
 
         if (storedUser.email) {
           const refreshed = await refreshUserProfile(storedUser.email, storedUser.username);
           if (refreshed) {
-            effectiveUser = refreshed;
+            effectiveUser = {
+              ...refreshed,
+              userId: refreshed.userId ?? storedUser.userId,
+            };
+
+            if (!refreshed.userId && storedUser.userId) {
+              setStoredAuthUser({ userId: storedUser.userId });
+            }
           }
         }
 
-        const storedUserId = effectiveUser?.userId ?? "";
+        const storedUserId = resolveHistoryUserId(effectiveUser);
         const githubToken = sessionStorage.getItem("github_access_token");
         const linkedUserId = sessionStorage.getItem("github_linked_user_id");
         const storedGithubUsername = sessionStorage.getItem("github_username") ?? "";
@@ -531,57 +645,8 @@ export default function ProfilePage() {
           setGithubUsername("");
         }
 
-        // Fetch analyses history
-        if (storedUserId) {
-          setIsLoadingAnalyses(true);
-          fetch(`/api/analyze/history?userId=${storedUserId}`)
-            .then((res) => res.json())
-            .then((data) => {
-              const source: unknown[] = Array.isArray(data)
-                ? data
-                : data.analyses && Array.isArray(data.analyses)
-                  ? data.analyses
-                  : [];
-
-              const normalized = source
-                .filter((item: unknown): item is Record<string, unknown> =>
-                  !!item && typeof item === "object"
-                )
-                .map((item: Record<string, unknown>) => ({
-                  id:
-                    typeof item.id === "string" || typeof item.id === "number"
-                      ? String(item.id)
-                      : typeof item.Id === "string" || typeof item.Id === "number"
-                        ? String(item.Id)
-                        : undefined,
-                  repoUrl:
-                    typeof item.repoUrl === "string"
-                      ? item.repoUrl
-                      : typeof item.RepoUrl === "string"
-                        ? item.RepoUrl
-                        : undefined,
-                  createdAt:
-                    typeof item.createdAt === "string"
-                      ? item.createdAt
-                      : typeof item.CreatedAt === "string"
-                        ? item.CreatedAt
-                        : undefined,
-                  rawJson:
-                    typeof item.rawJson === "string"
-                      ? item.rawJson
-                      : typeof item.RawJson === "string"
-                        ? item.RawJson
-                        : undefined,
-                  score: parseScore(item),
-                  scoreLabel: parseScoreLabel(item),
-                }));
-
-              setAnalyses(normalized);
-            })
-            .catch((err) => console.error("Erro ao buscar histórico:", err))
-            .finally(() => setIsLoadingAnalyses(false));
-        } else {
-          setAnalyses([]);
+        if (storedUserId !== initialHistoryUserId) {
+          void loadAnalysesHistory(storedUserId);
         }
       } catch {
         router.replace("/login");
@@ -589,7 +654,21 @@ export default function ProfilePage() {
     };
 
     void bootstrapProfile();
-  }, [router]);
+  }, [loadAnalysesHistory, resolveHistoryUserId, router]);
+
+  useEffect(() => {
+    const refreshHistoryOnPageShow = () => {
+      const storedUser = getStoredAuthUser();
+      const storedUserId = resolveHistoryUserId(storedUser);
+      void loadAnalysesHistory(storedUserId);
+    };
+
+    window.addEventListener("pageshow", refreshHistoryOnPageShow);
+
+    return () => {
+      window.removeEventListener("pageshow", refreshHistoryOnPageShow);
+    };
+  }, [loadAnalysesHistory, resolveHistoryUserId]);
 
   useEffect(() => {
     if (!showRecoveryNotice) {
@@ -749,11 +828,11 @@ export default function ProfilePage() {
               </p>
               <button
                 type="button"
-                onClick={handleOpenUpgradePrompt}
-                disabled={isUpgradingPro || isProUser}
+                onClick={() => router.push('/pricing')}
+                disabled={isUpgradingPro}
                 className="w-full py-2 bg-white text-slate-950 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-cyan-400 transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                {isProUser ? "Plano Pro Ativo" : isUpgradingPro ? "Ativando..." : "Virar Pro"}
+                {isProUser ? "Plano Pro Ativo" : isUpgradingPro ? "Ativando..." : "Consulte Planos"}
               </button>
 
               {isRefreshingProfile ? (

@@ -1,6 +1,6 @@
 "use client";
 import React from 'react';
-import { X, User, BookOpenText } from 'lucide-react';
+import { X, User, BookOpenText, CreditCard } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { clearStoredAuthUser } from '../lib/authUserSession';
 
@@ -71,6 +71,13 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             <div className="space-y-4">
               <h4 className="text-[10px] font-mono text-slate-600 uppercase tracking-widest px-2">Core_Settings</h4>
               <nav className="space-y-2">
+                <button 
+                  onClick={() => goTo('/pricing')}
+                  className="cursor-pointer w-full flex items-center gap-4 px-4 py-3 rounded-xl bg-white/5 text-slate-300 hover:text-cyan-400 hover:bg-cyan-500/10 border border-white/5 transition-all group"
+                >
+                  <CreditCard className="w-5 h-5 text-slate-500 group-hover:text-cyan-400" />
+                  <span className="text-sm font-medium">Planos e Preços</span>
+                </button>
                 <button className="cursor-pointer w-full flex items-center gap-4 px-4 py-3 rounded-xl bg-white/5 text-slate-300 hover:text-cyan-400 hover:bg-cyan-500/10 border border-white/5 transition-all group">
                   <BookOpenText className="w-5 h-5 text-slate-500 group-hover:text-cyan-400" />
                   <span className="text-sm font-medium">Protocolos de acessibilidade</span>
