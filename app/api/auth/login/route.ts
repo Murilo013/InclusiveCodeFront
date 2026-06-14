@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { UPSTREAM_BASE } from "../../../lib/upstream";
+function getApiBaseUrl(): string {
+  const value = process.env.API_BASE_URL?.trim();
+
+  if (!value) {
+    throw new Error("API_BASE_URL is not configured.");
+  }
+
+  return value;
+}
 
 function parseUpstreamResponse(raw: string) {
   if (!raw) {
@@ -17,7 +25,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const upstream = await fetch(`${UPSTREAM_BASE}/api/Auth/login`, {
+    const upstream = await fetch(`${getApiBaseUrl()}/api/Auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
